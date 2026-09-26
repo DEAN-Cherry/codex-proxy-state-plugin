@@ -1,0 +1,32 @@
+{
+  "name": "@codex-proxy/state-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@11.22.0",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "typecheck": "vue-tsc --noEmit",
+    "lint": "eslint src",
+    "build": "vue-tsc --noEmit && vite build",
+    "test": "node --experimental-strip-types --test src/api.test.ts"
+  },
+  "dependencies": {
+    "@codex-proxy/ui": "github:zyycn/codex-proxy-ui#3525a932a6838530b7425182e04a9ff9ef36de9c",
+    "vue": "3.5.42",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/node": "26.5.1",
+    "@vitejs/plugin-vue": "6.0.8",
+    "eslint": "10.10.0",
+    "eslint-plugin-vue": "10.8.0",
+    "tailwindcss": "4.3.3",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.70.1",
+    "vite": "8.3.0",
+    "vue-tsc": "3.3.11"
+  }
+}

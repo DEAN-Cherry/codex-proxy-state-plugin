@@ -1,0 +1,16 @@
+State Observer for Codex Proxy RS
+Copyright 2026 DEAN-Cherry
+
+This independent plugin is maintained at:
+https://github.com/DEAN-Cherry/codex-proxy-state-plugin
+
+It uses the public Gateway Plugin SDK and follows development patterns from
+the official Codex Proxy plugin examples:
+https://github.com/zyycn/codex-proxy-rs
+https://github.com/zyycn/codex-proxy-plugins
+
+Its management page uses the public Codex Proxy UI library:
+https://github.com/zyycn/codex-proxy-ui
+
+These upstream projects are maintained by their respective contributors.
+This plugin is not an official plugin published or endorsed by those projects.

@@ -1,0 +1,65 @@
+{
+  "manifestVersion": 1,
+  "name": "state-observer",
+  "displayName": "State 观测",
+  "publisher": "dean-cherry",
+  "version": "0.1.0",
+  "description": "按账号和模型记录业务 State 长度、指纹和观测历史",
+  "license": "Apache-2.0",
+  "engines": {"codex-proxy-rs": ">=3.15.2, <3.16.0"},
+  "main": "bin/plugin",
+  "runtime": "trustedProcess",
+  "contributes": {
+    "middleware": {
+      "stages": ["request", "attempt"],
+      "inputFormats": ["openai"],
+      "outputFormats": ["openai"]
+    },
+    "request_lifecycle": {},
+    "management": {}
+  },
+  "permissions": ["requests", "data"],
+  "configurationSchema": {"type": "object", "properties": {}, "additionalProperties": false},
+  "resources": {
+    "LICENSE": "text/plain",
+    "NOTICE": "text/plain",
+    "web/index.html": "text/html",
+    "web/app.js": "text/javascript",
+    "web/app.css": "text/css"
+  },
+  "state": [
+    {
+      "namespace": "settings",
+      "schemaVersion": 1,
+      "schema": {
+        "type": "object",
+        "required": ["enabled", "models", "lengthRules", "retentionHours"],
+        "properties": {
+          "enabled": {"type": "boolean"},
+          "models": {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 128}},
+          "lengthRules": {"type": "string", "maxLength": 1024},
+          "retentionHours": {"type": "integer", "minimum": 1, "maximum": 168}
+        },
+        "additionalProperties": false
+      },
+      "maximumRecords": 10000,
+      "maximumBytes": 16777216,
+      "maximumValueBytes": 8192,
+      "migratesFrom": []
+    },
+    {
+      "namespace": "observations",
+      "schemaVersion": 1,
+      "schema": {
+        "type": "object",
+        "required": ["models"],
+        "properties": {"models": {"type": "array", "maxItems": 16, "items": {"type": "object"}}},
+        "additionalProperties": false
+      },
+      "maximumRecords": 10000,
+      "maximumBytes": 16777216,
+      "maximumValueBytes": 49152,
+      "migratesFrom": []
+    }
+  ]
+}

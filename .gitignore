@@ -1,0 +1,7 @@
+backend/target/
+frontend/node_modules/
+frontend/dist/
+dist/
+.tools/
+.evidence/
+.test-target/
