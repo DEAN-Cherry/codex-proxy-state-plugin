@@ -3,7 +3,7 @@
   "name": "state-observer",
   "displayName": "State 观测",
   "publisher": "dean-cherry",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "按账号和模型记录业务 State 长度、指纹和观测历史",
   "license": "Apache-2.0",
   "engines": {"codex-proxy-rs": ">=3.15.2, <3.16.0"},
