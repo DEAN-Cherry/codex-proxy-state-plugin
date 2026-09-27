@@ -23,6 +23,21 @@ for (const [model, lengths] of [
   for (const length of lengths) await peer.observe(firstAccount, model, length)
 }
 await peer.observe(peer.accounts[1], 'gpt-6-astra', 780)
+for (let index = 1; index <= 28; index += 1) {
+  const accountId = `acct_demo_${String(index).padStart(3, '0')}`
+  await peer.observe(accountId, 'gpt-6-astra', index % 2 === 0 ? 292 : 780)
+  if (index % 3 === 0) await peer.observe(accountId, 'gpt-6-sol', 480)
+}
+const disabled = await peer.api('POST', 'api/settings', {
+  accountId: 'acct_demo_028', expectedVersion: null,
+  settings: { enabled: false, models: [], lengthRules: '', retentionHours: 24 },
+})
+if (disabled.status !== 200) throw new Error('QA disabled-observation setup failed')
+const expired = peer.states.get('observations:acct_demo_027')
+if (!expired) throw new Error('QA expiry setup requires real plugin observations')
+for (const model of expired.value.models)
+  for (const sample of model.history) sample.observedAtMs -= 8 * 24 * 3_600_000
+await peer.observeWebsocket('acct_demo_003', 'gpt-6-astra', 780)
 
 const bridge = `
 window.codexProxyPlugin = {

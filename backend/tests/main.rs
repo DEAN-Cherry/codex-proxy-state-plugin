@@ -181,21 +181,32 @@ fn attribution_never_guesses_missing_account_or_model() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn plugin_session_uses_binary_account_facts_callback() {
+async fn plugin_session_reads_names_without_requesting_credentials() {
+    assert_eq!(
+        codex_proxy_state_plugin::manifest().unwrap().permissions,
+        [
+            gateway_plugin_sdk::Permission::Accounts,
+            gateway_plugin_sdk::Permission::Requests
+        ]
+        .into_iter()
+        .collect(),
+    );
     let mut peer = support::Peer::start().await;
     let (status, body) = peer.api("GET", "api/accounts", None, |method, params, payload| {
-        assert_eq!(method, "host.data.accounts.list");
+        assert_eq!(method, "host.auth.list");
         assert_eq!(params, &serde_json::json!({}));
         let query: serde_json::Value = serde_json::from_slice(payload).unwrap();
         assert_eq!(query["provider_id"], "openai");
         Ok((serde_json::json!({}), serde_json::to_vec(&serde_json::json!({
-            "schema_version": 1,
-            "accounts": [{"account_id":"acct-a","provider_id":"openai","group_ids":[],"enabled":true,"updated_at_ms":0}],
+            "accounts": [{"account_id":"acct-a","provider_id":"openai","name":"Primary account","enabled":true,
+                "credential_revision":1,"authentication_kind":"oauth","credential_state":"ready","has_refresh_token":true}],
             "next_cursor": null
         })).unwrap()))
     }).await;
     assert_eq!(status, 200);
     assert_eq!(body["accounts"][0]["accountId"], "acct-a");
+    assert_eq!(body["accounts"][0]["accountName"], "Primary account");
+    assert!(body["accounts"][0].get("credential_revision").is_none());
 }
 
 mod support;

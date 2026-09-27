@@ -38,24 +38,8 @@ const time = (ms: number) => new Date(ms).toLocaleString('zh-CN', { hour12: fals
       </div>
       <p v-else class="my-4 text-cp-text-secondary">{{ snapshot.models.length ? '没有匹配的模型' : '未观测到 State，业务响应出现可见元数据后记录将在此显示' }}</p>
       <p class="mt-3 mb-0 text-cp-xs text-cp-text-secondary">每账号最多保留 16 个模型，每模型统计保留窗口内最近 12 条有界观测，不是全量审计</p>
-      <p class="mt-2 mb-0 text-cp-xs text-cp-text-secondary">数据截至 {{ time(snapshot.nowMs) }}，点击模型查看详情</p>
+      <p class="mt-2 mb-0 text-cp-xs text-cp-text-secondary">数据截至 {{ time(snapshot.nowMs) }}，点击模型查看长度分布和历史</p>
     </BaseCard>
     <ModelDetails v-if="detail" id="model-details" :model="detail" />
-    <BaseCard padding="compact">
-      <details>
-        <summary class="cursor-pointer text-cp-sm font-bold">观测范围与诊断</summary>
-        <div class="mt-3 flex flex-col gap-2 text-cp-sm text-cp-text-secondary">
-          <p class="m-0">只记录业务响应中可见的 State 元数据，不主动请求或刷新 State</p>
-          <p class="m-0">宿主会过滤部分上游 response.metadata 事件，缺少响应头或元数据仅表示未观测，不表示账号健康或异常</p>
-          <p class="m-0">响应头可能来自复用的 WebSocket 连接，WebSocket 元数据表示可见 JSON 帧，均不证明刚发生握手</p>
-          <p class="m-0">长度匹配仅是配置规则检查，摘要不代表模型能力，本地过期不代表上游 State 失效</p>
-          <dl class="m-0 grid grid-cols-2 gap-2">
-            <dt>未归属事件</dt><dd class="m-0 font-mono">{{ snapshot.diagnostics.unattributed }}</dd>
-            <dt>丢弃事件</dt><dd class="m-0 font-mono">{{ snapshot.diagnostics.dropped }}</dd>
-            <dt>存储失败</dt><dd class="m-0 font-mono">{{ snapshot.diagnostics.storageFailures }}</dd>
-          </dl>
-        </div>
-      </details>
-    </BaseCard>
   </div>
 </template>

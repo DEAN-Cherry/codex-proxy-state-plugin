@@ -19,7 +19,7 @@
     "web_socket_observer": {},
     "management": {}
   },
-  "permissions": ["requests", "data"],
+  "permissions": ["requests", "accounts"],
   "configurationSchema": {"type": "object", "properties": {}, "additionalProperties": false},
   "resources": {
     "LICENSE": "text/plain",

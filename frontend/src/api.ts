@@ -15,22 +15,35 @@ const source = z.enum(['http_header', 'sse_metadata', 'websocket_metadata'])
 export const settingsSchema = z.object({
   enabled: z.boolean(), models: z.array(z.string().min(1)), lengthRules: z.string(), retentionHours: z.number().int().min(1).max(168),
 })
+const modelSummary = z.object({
+  model: z.string().min(1), observations: count, matched: count, mismatched: count,
+  lastObservedAtMs: timestamp, expiresAtMs: timestamp, latestLength: count, latestFingerprint: z.string(),
+  source, validation, expired: z.boolean(),
+}).strict().refine(row => row.matched + row.mismatched <= row.observations)
+export const overviewSchema = z.object({
+  accounts: z.array(z.object({
+    accountId: z.string().min(1), accountName: z.string(), enabled: z.boolean(), observationEnabled: z.boolean().nullable(), error: z.literal('unavailable').nullable(), models: z.array(modelSummary),
+  }).strict()),
+  nextCursor: z.string().min(1).nullable(),
+  diagnostics: z.object({ unattributed: count, dropped: count, storageFailures: count }), nowMs: timestamp,
+})
 export const accountsSchema = z.object({
-  accounts: z.array(z.object({ accountId: z.string().min(1), enabled: z.boolean() })), nextCursor: z.string().min(1).nullable(),
+  accounts: z.array(z.object({ accountId: z.string().min(1), accountName: z.string(), enabled: z.boolean() })), nextCursor: z.string().min(1).nullable(),
 })
 export const snapshotSchema = z.object({
   accountId: z.string().min(1), version: count.nullable(), settings: settingsSchema,
-  models: z.array(z.object({
-    model: z.string().min(1), observations: count, matched: count, mismatched: count,
-    lastObservedAtMs: timestamp, expiresAtMs: timestamp, latestLength: count, latestFingerprint: z.string(),
-    source, validation, expired: z.boolean(), lengths: z.array(z.object({ length: count, count })),
+  models: z.array(modelSummary.extend({
+    lengths: z.array(z.object({ length: count, count })),
     history: z.array(z.object({ observedAtMs: timestamp, length: count, fingerprint: z.string(), source, validation })),
-  }).refine(row => row.matched + row.mismatched <= row.observations)),
+  })),
   diagnostics: z.object({ unattributed: count, dropped: count, storageFailures: count }), nowMs: timestamp,
 })
+export type Overview = z.infer<typeof overviewSchema>
 export type Snapshot = z.infer<typeof snapshotSchema>
 export type Settings = z.infer<typeof settingsSchema>
 export type Account = z.infer<typeof accountsSchema>['accounts'][number]
+export type OverviewAccount = Overview['accounts'][number]
+export type ModelSummary = OverviewAccount['models'][number]
 export type Model = Snapshot['models'][number]
 
 export class ApiError extends Error {

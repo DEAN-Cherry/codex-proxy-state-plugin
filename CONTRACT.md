@@ -2,6 +2,8 @@
 
 目标宿主为 codex-proxy-rs v3.15.2，SDK 固定提交 `589e1bc999a8b110201b7fdcbf32d2e75bf08253`。
 独立工程不依赖 fork 业务代码，不主动请求模型、不刷新 State、不改写请求、不参与调度。
+响应正文保持宿主未读句柄，不使用流映射或 `inspect_frames`。
+WebSocket State 通过旁路观察回调采集，HTTP/SSE 仅采集可见响应头，不读取正文。
 
 ## 用户能力
 
@@ -9,7 +11,8 @@
 - 每账号选择观察模型，空列表表示观察所有模型
 - 长度规则支持逗号分隔的正整数及闭区间，例如 `200,300,400-500`，空字符串表示不限长度
 - 保存最近 State 观测摘要、次数、长度分布、最近历史与本地过期时间
-- 独立管理页选择账号，按模型显示 State 记录并编辑配置
+- 独立管理页默认聚合全部账号的 State 概况，支持账号、模型和状态筛选，再下钻详情与账号配置
+- 账号名称为主显示，ID 用于区分同名账号和内部关联，外层账号组、内层模型表，按账号整组分页
 - State 原文不返回浏览器、日志或诊断，摘要不表示模型能力或服务端有效期
 - 不可确定账号或实际发送模型的事件不归入任何账号
 
@@ -17,13 +20,56 @@
 
 通过 `window.codexProxyPlugin.request` 访问相对路由，JSON 响应不使用宿主信封。
 
+### POST api/overview
+
+请求 `{"cursor":null,"limit":20}`。`cursor` 可省略或为上一页返回的账号 ID，
+`limit` 为 1～50，缺省为 20。按宿主账号 ID 升序分页，不遗漏停用或尚无观测的账号。
+
+```json
+{
+  "accounts":[{
+    "accountId":"acct_example",
+    "accountName":"主力账号",
+    "enabled":true,
+    "observationEnabled":true,
+    "error":null,
+    "models":[{
+      "model":"gpt-6-astra",
+      "observations":2,
+      "matched":1,
+      "mismatched":1,
+      "lastObservedAtMs":1790000000000,
+      "expiresAtMs":1790086400000,
+      "latestLength":312,
+      "latestFingerprint":"a1b2c3d4e5f6",
+      "source":"http_header",
+      "validation":"mismatch",
+      "expired":false
+    }]
+  }],
+  "nextCursor":null,
+  "diagnostics":{"unattributed":0,"dropped":0,"storageFailures":0},
+  "nowMs":1790000000000
+}
+```
+
+单个账号的私有状态读取失败时，`error` 为 `unavailable`、`observationEnabled` 为 `null`、
+`models` 为空，不能将它显示成“未观测”或“停用观测”。宿主账号目录失败则整个请求失败。
+摘要不包含长度分布或历史，点击账号/模型后通过 `api/account` 读取详情。
+加载全部账号时依次请求后续页，界面持续显示加载进度，不把已加载部分称为全局总计。
+页面按账号整组分页，名称或 ID 筛选选择账号，模型和状态筛选保留匹配模型所属的账号层级。
+筛选覆盖所有已加载账号，完成全部加载后才能表示全部账号。
+聚合查询不持有观测写锁，不阻塞业务观测写入等待队列。
+
 ### GET api/accounts
 
 ```json
-{"accounts":[{"accountId":"acct_example","enabled":true}],"nextCursor":null}
+{"accounts":[{"accountId":"acct_example","accountName":"主力账号","enabled":true}],"nextCursor":null}
 ```
 
-基础账号来自 `data` 权限，不申请能读取原始凭据的 `accounts` 权限。
+账号来自需要 `accounts` 权限的 `host.auth.list` 非凭据运行投影。
+只向页面返回 ID、名称和启用状态，不调用原始凭据读取或账号写入接口。
+`accountName` 为空或仅含空白时，界面回退到 ID，存储键和所有操作始终使用 ID。
 支持 `?cursor=...` 分页，每页最多 200 个 OpenAI 账号。
 
 ### POST api/account
@@ -72,8 +118,9 @@
 
 ## 页面要求
 
-账号选择、刷新、筛选模型；紧凑模型表格展示长度、规则匹配、观测次数、最后观测时间和过期状态。
-选择模型可查看长度分布和最近历史。
-账号配置表单包括启用观测、模型列表、长度规则、保留时间。
+默认页面提供账号概况和分组模型表格，自动分批加载全部账号。
+支持账号名称或 ID、模型和匹配/过期/未观测/读取失败筛选，区分停用账号与停用观测。
+打开账号详情后，点击模型查看长度分布和最近历史，并可编辑启用观测、模型列表、长度规则和保留时间。
+保留并发编辑冲突处理，详情或配置错误不能隐藏已加载的全局概况。
 支持宿主明暗主题、375/768/1280 宽度、键盘操作、加载/空/错误状态。
 生产构建不包含模拟记录或自动安装预览宿主。

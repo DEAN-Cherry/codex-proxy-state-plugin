@@ -10,11 +10,26 @@ export class PluginPeer {
   #manifest
   states = new Map()
   storageError = false
-  accounts = ['acct_demo_pro_01', 'acct_demo_plus_02', 'acct_demo_empty_03']
+  unavailableAccounts = new Set(['acct_demo_unavailable'])
+  disabledAccounts = new Set(['acct_demo_plus_02'])
+  accountNames = new Map([
+    ['acct_demo_001', '主力账号'],
+    ['acct_demo_002', '主力账号'],
+    ['acct_demo_003', '研发专用'],
+    ['acct_demo_004', ''],
+    ['acct_demo_pro_01', 'Pro 备用'],
+    ['acct_demo_plus_02', 'Plus 暂停'],
+    ['acct_demo_empty_03', '尚未使用'],
+    ['acct_demo_unavailable', '读取异常'],
+  ])
+  accounts = [
+    'acct_demo_pro_01', 'acct_demo_plus_02', 'acct_demo_empty_03', 'acct_demo_unavailable',
+    ...Array.from({ length: 52 }, (_, index) => `acct_demo_${String(index + 1).padStart(3, '0')}`),
+  ]
 
   constructor(manifest) {
     this.#manifest = manifest
-    const executable = fileURLToPath(new URL(
+    const executable = process.env.QA_PLUGIN_BINARY ?? fileURLToPath(new URL(
       `../backend/target/debug/codex-proxy-state-plugin${process.platform === 'win32' ? '.exe' : ''}`,
       import.meta.url,
     ))
@@ -62,6 +77,7 @@ export class PluginPeer {
       context: {
         call_id: id, instance_id: 'qa-state-observer', generation: 1, incarnation: 'qa-process',
         stage, timeout_ms: 10_000, resource_scope_id: 'qa-scope', request_id: requestId,
+        account_id: params.account_id,
       },
       params,
     }, payload)
@@ -96,6 +112,28 @@ export class PluginPeer {
       account_id: account, upstream_model: model, provider: 'openai', completed_at_ms: Date.now(),
       terminal: { outcome: 'succeeded', send_state: 'sent', attempt_count: 1 },
     })), undefined, id)
+  }
+
+  async observeWebsocket(account, model, length) {
+    const id = crypto.randomUUID()
+    const response = await this.call('middleware.handle', 'attempt', {
+      request_id: id, mount: 'attempt', attempt_index: 1, operation: 'generate', protocol: 'openai',
+      endpoint: '/v1/responses', transport: 'web_socket', provider: 'openai', model,
+      account_id: account, headers: [], body_visible: true,
+    }, Buffer.from(JSON.stringify({ model: 'public-alias', input: 'synthetic QA request' })),
+    method => {
+      if (method !== 'host.middleware.next') throw new Error(`observer attempted body access: ${method}`)
+      return { result: {
+        response: `response-${id}`, protocol: 'openai', status: 200, headers: [],
+        body: { handle: `body-${id}`, framing: 'json_document' },
+      }, payload: Buffer.alloc(0) }
+    }, id)
+    if (response.message.result.body.kind !== 'pass_through') throw new Error('observer took stream ownership')
+    await this.call('websocket.response_event', 'observation', {
+      event_id: id, request_id: id, config_revision: 1, operation: 'generate', protocol: 'openai',
+      provider: 'openai', attempt_index: 1, sequence: 1, payload_included: true,
+      requested_model: 'public-alias', account_id: account, event_type: 'codex.response.metadata',
+    }, Buffer.from(JSON.stringify({ type: 'codex.response.metadata', headers: { 'x-codex-turn-state': 'Q'.repeat(length) } })), undefined, id)
   }
 
   #send(message, payload = Buffer.alloc(0)) {
@@ -154,6 +192,7 @@ export class PluginPeer {
     const key = `${params.namespace}:${params.key}`
     switch (method) {
       case 'host.state.get':
+        if (this.unavailableAccounts.has(params.key)) return fail('fault')
         return { result: { record: this.states.get(key) ?? null }, payload: Buffer.alloc(0) }
       case 'host.state.put': {
         const previous = this.states.get(key)
@@ -162,13 +201,16 @@ export class PluginPeer {
         this.states.set(key, { value: structuredClone(params.value), version, schema_version: 1 })
         return { result: { version }, payload: Buffer.alloc(0) }
       }
-      case 'host.data.accounts.list': {
+      case 'host.auth.list': {
         const query = JSON.parse(payload.toString())
-        const ids = this.accounts.filter(id => !query.cursor || id > query.cursor).slice(0, query.limit)
+        const remaining = this.accounts.filter(id => !query.cursor || id > query.cursor).sort()
+        const ids = remaining.slice(0, query.limit)
         return { result: {}, payload: Buffer.from(JSON.stringify({
-          schema_version: 1, next_cursor: null,
+          next_cursor: remaining.length > ids.length ? ids.at(-1) : null,
           accounts: ids.map(account_id => ({
-            account_id, provider_id: 'openai', group_ids: [], enabled: true, updated_at_ms: Date.now(),
+            account_id, provider_id: 'openai', name: this.accountNames.get(account_id) ?? `账号 ${account_id.slice(-3)}`,
+            enabled: !this.disabledAccounts.has(account_id), credential_revision: 1,
+            authentication_kind: 'oauth', credential_state: 'ready', has_refresh_token: true,
           })),
         })) }
       }

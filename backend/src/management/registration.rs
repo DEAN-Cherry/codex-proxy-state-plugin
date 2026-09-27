@@ -6,6 +6,7 @@ pub fn registration() -> ManagementRegistration {
     ManagementRegistration {
         routes: [
             ("GET", "api/accounts"),
+            ("POST", "api/overview"),
             ("POST", "api/account"),
             ("POST", "api/settings"),
         ]

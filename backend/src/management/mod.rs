@@ -1,19 +1,18 @@
+mod directory;
+mod overview;
 mod registration;
 mod response;
 
 use gateway_plugin_sdk::{
     ErrorCode, PluginFault,
-    call::{
-        data::AccountFactsQuery,
-        management::{ManagementRequest, ManagementResponse},
-    },
+    call::management::{ManagementRequest, ManagementResponse},
     client::{TypedCall, TypedReply},
 };
 use serde::Deserialize;
 use serde_json::json;
 
 use crate::{
-    records::AccountRecords,
+    records::{AccountRecords, ModelView},
     settings::{Settings, valid_identifier},
     state::{AppState, now_ms},
     store,
@@ -44,6 +43,9 @@ pub async fn handle(
     }
     let result = match (call.request.method.as_str(), call.request.path.as_str()) {
         ("GET", "api/accounts") => accounts(&call).await,
+        ("POST", "api/overview") if call.request.query.is_empty() => {
+            overview::snapshot(state, &call).await
+        }
         ("POST", "api/account") if call.request.query.is_empty() => {
             let Ok(query) = serde_json::from_slice::<AccountQuery>(&call.payload) else {
                 return error(400, "invalid_request", "账号查询格式无效");
@@ -100,18 +102,11 @@ async fn accounts(
         }
         cursor = Some(value.into_owned());
     }
-    let page = call
-        .host
-        .account_facts(AccountFactsQuery {
-            provider_id: Some("openai".to_owned()),
-            cursor,
-            limit: 200,
-        })
-        .await?;
+    let page = directory::list(&call.host, cursor, 200).await?;
     let accounts: Vec<_> = page
         .accounts
         .into_iter()
-        .map(|account| json!({"accountId":account.account_id, "enabled":account.enabled}))
+        .map(|account| json!({"accountId":account.account_id, "accountName":account.name, "enabled":account.enabled}))
         .collect();
     json_reply(
         200,
@@ -124,6 +119,28 @@ async fn snapshot(
     host: &gateway_plugin_sdk::client::HostClient,
     account: &str,
 ) -> Result<TypedReply<ManagementResponse>, PluginFault> {
+    let now = now_ms();
+    let data = load_account(host, account, now).await?;
+    json_reply(
+        200,
+        &json!({
+            "accountId":account, "version":data.version, "settings":data.settings,
+            "models":data.models, "diagnostics":state.diagnostics(), "nowMs":now
+        }),
+    )
+}
+
+struct AccountData {
+    version: Option<u64>,
+    settings: Settings,
+    models: Vec<ModelView>,
+}
+
+async fn load_account(
+    host: &gateway_plugin_sdk::client::HostClient,
+    account: &str,
+    now: u64,
+) -> Result<AccountData, PluginFault> {
     let (settings, version) = store::get::<Settings>(host, "settings", account).await?;
     let rules = settings
         .validate()
@@ -131,12 +148,9 @@ async fn snapshot(
     let (mut records, _) = store::get::<AccountRecords>(host, "observations", account).await?;
     // 展示始终按当前配置解释保留的长度，不把旧规则的匹配结果冒充当前结果。
     records.reclassify(&rules);
-    let now = now_ms();
-    json_reply(
-        200,
-        &json!({
-            "accountId":account, "version":version, "settings":settings,
-            "models":records.views(&settings, now), "diagnostics":state.diagnostics(), "nowMs":now
-        }),
-    )
+    Ok(AccountData {
+        models: records.views(&settings, now),
+        version,
+        settings,
+    })
 }
