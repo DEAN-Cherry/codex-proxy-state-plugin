@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use gateway_plugin_sdk::{
     PluginFault,
-    call::{middleware::MiddlewareMount, policy::ObserveRequest},
+    call::{
+        middleware::MiddlewareMount, observation::ObserveWebSocketResponse, policy::ObserveRequest,
+    },
     client::{Empty, MiddlewareCall, MiddlewareResponse, TypedCall, TypedReply},
 };
 
@@ -30,43 +32,67 @@ pub async fn middleware(
     if mount == MiddlewareMount::Request {
         state.collector().begin(&id, state.elapsed());
     }
-    let mut response = call.next.run(call.request).await?;
-    match mount {
-        MiddlewareMount::Request => {
-            let batches = state.collector().headers(
-                &id,
-                extract::headers(&response.headers, now_ms()),
-                state.elapsed(),
-            );
-            state.flush(&call.host, batches).await;
-        }
-        MiddlewareMount::Attempt => {
-            if let (Some(owner), Some(attempt), Some(framing)) =
-                (owner, attempt, response.body.framing())
-            {
-                let mut sequence = 0_u64;
-                response.body = response.body.inspect_frames(move |frame| {
-                    sequence = sequence.saturating_add(1);
-                    let mut samples = extract::frame(&frame.payload, framing, now_ms());
-                    for (index, sample) in samples.iter_mut().enumerate() {
-                        sample.event_id =
-                            event_id(&id, &format!("attempt:{attempt}:frame:{sequence}:{index}"));
-                    }
-                    if !samples.is_empty() {
-                        state.collector().samples(
-                            &id,
-                            Batch {
-                                owner: owner.clone(),
-                                samples,
-                            },
-                            state.elapsed(),
-                        );
-                    }
-                })?;
-            }
-        }
+    if mount == MiddlewareMount::Attempt
+        && let (Some(owner), Some(attempt)) = (owner, attempt)
+    {
+        // 先冻结真实选号与映射模型，旁路事件即使早于 next 返回也能正确归属。
+        state
+            .collector()
+            .attempt(&id, attempt, owner, state.elapsed());
     }
+    let response = call.next.run(call.request).await?;
+    if mount == MiddlewareMount::Request {
+        let batches = state.collector().headers(
+            &id,
+            extract::headers(&response.headers, now_ms()),
+            state.elapsed(),
+        );
+        state.flush(&call.host, batches).await;
+    }
+    // 3.15.2 的内部 RawBytes 控制帧不能经过 SSE/JSON 正文回调校验。
+    // 原样归还未读取的句柄，让宿主保留流、取消、提交和终态信封的所有权。
     Ok(response)
+}
+
+pub async fn websocket(
+    state: &AppState,
+    call: TypedCall<ObserveWebSocketResponse>,
+) -> Result<TypedReply<Empty>, PluginFault> {
+    if call.request.provider != "openai" || !call.request.payload_included {
+        return Ok(TypedReply::new(Empty {}));
+    }
+    let mut samples = extract::frame(
+        &call.payload,
+        gateway_plugin_sdk::call::middleware::MiddlewareBodyFraming::JsonDocument,
+        now_ms(),
+    );
+    if samples.is_empty() {
+        return Ok(TypedReply::new(Empty {}));
+    }
+    let owner = state.collector().attempt_owner(
+        &call.request.request_id,
+        call.request.attempt_index,
+        state.elapsed(),
+    );
+    let Some(owner) =
+        owner.filter(|owner| call.request.account_id.as_deref() == Some(owner.account.as_str()))
+    else {
+        let mut collector = state.collector();
+        collector.unattributed = collector
+            .unattributed
+            .saturating_add(u64::try_from(samples.len()).unwrap_or(u64::MAX));
+        return Ok(TypedReply::new(Empty {}));
+    };
+    for (index, sample) in samples.iter_mut().enumerate() {
+        sample.event_id = event_id(
+            &call.request.event_id,
+            &format!("websocket:{}:{index}", call.request.sequence),
+        );
+    }
+    state
+        .flush(&call.host, vec![Batch { owner, samples }])
+        .await;
+    Ok(TypedReply::new(Empty {}))
 }
 
 pub async fn terminal(

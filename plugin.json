@@ -16,6 +16,7 @@
       "outputFormats": ["openai"]
     },
     "request_lifecycle": {},
+    "web_socket_observer": {},
     "management": {}
   },
   "permissions": ["requests", "data"],

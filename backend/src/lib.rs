@@ -24,6 +24,7 @@ pub fn plugin() -> Result<ComposedPlugin, AuthorError> {
     let state = Arc::new(AppState::default());
     let middleware_state = Arc::clone(&state);
     let terminal_state = Arc::clone(&state);
+    let websocket_state = Arc::clone(&state);
     PluginBuilder::from_json(include_bytes!("../../plugin.json"))?
         .middleware(move |call| {
             let state = Arc::clone(&middleware_state);
@@ -32,6 +33,10 @@ pub fn plugin() -> Result<ComposedPlugin, AuthorError> {
         .on(methods::OBSERVE_REQUEST, move |call| {
             let state = Arc::clone(&terminal_state);
             async move { observation::terminal(&state, call).await }
+        })?
+        .on(methods::OBSERVE_WEBSOCKET, move |call| {
+            let state = Arc::clone(&websocket_state);
+            async move { observation::websocket(&state, call).await }
         })?
         .management(management::registration(), move |call| {
             let state = Arc::clone(&state);

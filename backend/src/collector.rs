@@ -40,6 +40,7 @@ struct Pending {
 #[derive(Default)]
 pub struct Collector {
     requests: BTreeMap<String, Pending>,
+    attempts: BTreeMap<(String, u32), (Duration, Attribution)>,
     pub dropped: u64,
     pub unattributed: u64,
 }
@@ -76,6 +77,32 @@ impl Collector {
 
     pub fn begin(&mut self, id: &str, now: Duration) {
         self.entry(id, now).headers = None;
+    }
+
+    pub fn attempt(&mut self, id: &str, index: u32, owner: Attribution, now: Duration) {
+        self.attempts
+            .retain(|_, (created, _)| now.saturating_sub(*created) < PENDING_TTL);
+        let key = (id.to_owned(), index);
+        if !self.attempts.contains_key(&key)
+            && self.attempts.len() >= MAX_REQUESTS
+            && let Some(oldest) = self
+                .attempts
+                .iter()
+                .min_by_key(|(_, (created, _))| *created)
+                .map(|(key, _)| key.clone())
+        {
+            self.attempts.remove(&oldest);
+            self.dropped = self.dropped.saturating_add(1);
+        }
+        self.attempts.insert(key, (now, owner));
+    }
+
+    pub fn attempt_owner(&mut self, id: &str, index: u32, now: Duration) -> Option<Attribution> {
+        self.attempts
+            .retain(|_, (created, _)| now.saturating_sub(*created) < PENDING_TTL);
+        self.attempts
+            .get(&(id.to_owned(), index))
+            .map(|(_, owner)| owner.clone())
     }
 
     pub fn headers(&mut self, id: &str, mut samples: Vec<Sample>, now: Duration) -> Vec<Batch> {
