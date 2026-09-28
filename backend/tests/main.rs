@@ -180,6 +180,19 @@ fn attribution_never_guesses_missing_account_or_model() {
     assert!(Attribution::new(Some("account"), None).is_none());
 }
 
+#[test]
+fn manifest_accepts_supported_hosts_without_an_upper_cap() {
+    let manifest = codex_proxy_state_plugin::manifest().unwrap();
+    manifest.validate().unwrap();
+    let hosts = &manifest.engines.codex_proxy_rs;
+    for version in ["3.15.2", "3.16.0", "3.17.0", "4.0.0"] {
+        assert!(hosts.matches(&version.parse().unwrap()), "{version}");
+    }
+    for version in ["3.15.1", "3.14.0"] {
+        assert!(!hosts.matches(&version.parse().unwrap()), "{version}");
+    }
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn plugin_session_reads_names_without_requesting_credentials() {
     assert_eq!(

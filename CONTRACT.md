@@ -1,6 +1,7 @@
 # State 观测插件
 
-目标宿主为 codex-proxy-rs v3.15.2，SDK 固定提交 `589e1bc999a8b110201b7fdcbf32d2e75bf08253`。
+宿主最低版本为 codex-proxy-rs v3.15.2，不设人为上限，要求以 `plugin.json` 的 `engines` 为准；
+构建使用的 SDK 提交以 `backend/Cargo.toml` 中 `gateway-plugin-sdk` 的 `rev` 为准。
 独立工程不依赖 fork 业务代码，不主动请求模型、不刷新 State、不改写请求、不参与调度。
 响应正文保持宿主未读句柄，不使用流映射或 `inspect_frames`。
 WebSocket State 通过旁路观察回调采集，HTTP/SSE 仅采集可见响应头，不读取正文。

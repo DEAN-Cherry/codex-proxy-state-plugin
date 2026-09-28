@@ -49,7 +49,7 @@ pub async fn middleware(
         );
         state.flush(&call.host, batches).await;
     }
-    // 3.15.2 的内部 RawBytes 控制帧不能经过 SSE/JSON 正文回调校验。
+    // 宿主的内部 RawBytes 控制帧不能经过 SSE/JSON 正文回调校验。
     // 原样归还未读取的句柄，让宿主保留流、取消、提交和终态信封的所有权。
     Ok(response)
 }
