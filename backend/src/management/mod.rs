@@ -106,7 +106,10 @@ async fn accounts(
     let accounts: Vec<_> = page
         .accounts
         .into_iter()
-        .map(|account| json!({"accountId":account.account_id, "accountName":account.name, "enabled":account.enabled}))
+        .map(|account| {
+            let account_name = directory::display_label(&account);
+            json!({"accountId":account.account_id, "accountName":account_name, "enabled":account.enabled})
+        })
         .collect();
     json_reply(
         200,

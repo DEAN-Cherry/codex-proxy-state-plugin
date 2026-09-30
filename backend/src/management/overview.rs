@@ -116,9 +116,10 @@ pub(super) async fn snapshot(
                 ),
                 Err(_) => (None, Some("unavailable"), Vec::new()),
             };
+        let account_name = directory::display_label(&account);
         accounts.push(Account {
             account_id: account.account_id,
-            account_name: account.name,
+            account_name,
             enabled: account.enabled,
             observation_enabled,
             error,

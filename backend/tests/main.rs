@@ -200,7 +200,7 @@ fn source_manifest_requires_the_new_contract_and_rejects_old_shapes() {
     let source: serde_json::Value =
         serde_json::from_str(include_str!("../../plugin.json")).unwrap();
     assert_eq!(source["manifestVersion"], 2);
-    assert_eq!(source["version"], "0.2.0");
+    assert_eq!(source["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(source["contributes"]["middleware"]["version"], 3);
     assert_eq!(
         source["contributes"]["middleware"]["stages"],
@@ -227,7 +227,7 @@ fn source_manifest_requires_the_new_contract_and_rejects_old_shapes() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn plugin_session_reads_names_without_requesting_credentials() {
+async fn plugin_session_reads_display_labels_without_requesting_credentials() {
     let mut peer = support::Peer::start().await;
     let (status, body) = peer.api("GET", "api/accounts", None, |method, params, payload| {
         assert_eq!(method, "host.data.accounts.list");
@@ -241,10 +241,10 @@ async fn plugin_session_reads_names_without_requesting_credentials() {
     }).await;
     assert_eq!(status, 200);
     assert_eq!(body["accounts"][0]["accountId"], "acct-a");
-    assert_eq!(body["accounts"][0]["accountName"], "Primary account");
+    assert_eq!(body["accounts"][0]["accountName"], "private@example.com");
     assert_eq!(
         body["accounts"][0],
-        serde_json::json!({"accountId":"acct-a","accountName":"Primary account","enabled":true})
+        serde_json::json!({"accountId":"acct-a","accountName":"private@example.com","enabled":true})
     );
 }
 

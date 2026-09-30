@@ -15,7 +15,7 @@ SDK 版本以 `backend/Cargo.toml` 中 `gateway-plugin-sdk` 的 `rev` 为准，�
 1. 核对远端标签、当前提交、版本与 SDK 锁定提交
 2. 前端 Lint、测试、类型检查及构建，后端 Rustfmt、Clippy 与完整测试
 3. 使用固定的 `cargo-zigbuild==0.23.4`、`ziglang==0.14.1` 构建 Linux x86_64 GNU（glibc 2.28 基线）release 二进制，不复用本地产物
-4. 用 Bun 1.4.2 启动该 release 二进制，验证协议 2、56 个账号的隐私投影、HTTP/WS 观测、设置保存与 CAS 409
+4. 用 Bun 1.4.2 启动该 release 二进制，验证协议 2、56 个账号在目录与分页概况中的邮箱优先标签及隐私投影、HTTP/WS 观测、设置保存与 CAS 409
 5. 从 `backend/Cargo.toml` 动态读取 SDK 提交，安装同提交的官方 `cpr-plugin` 并打包；检查 ELF 架构、GLIBC 版本引用、清单/协议合同、每个包内文件与摘要
 6. 创建 Draft Release，仅上传 `.tar.gz` 与 `.sha256`；下载全部附件并核对文件名、摘要及本次构建内容，再发布为非预发布的 Latest
 
@@ -79,5 +79,5 @@ cargo install --locked --git https://github.com/zyycn/codex-proxy-rs.git \
 ```
 
 生成的 `.tar.gz` 与 `.sha256` 通过摘要绑定二进制和静态资源。
-在 Linux 上可用 `python3 scripts/verify-package.py --tag v0.2.0 --directory dist --binary <本次构建的二进制路径>` 复现包校验（需 Python 3.11+、`readelf`）。
+在 Linux 上可用 `python3 scripts/verify-package.py --tag v0.2.1 --directory dist --binary <本次构建的二进制路径>` 复现包校验（需 Python 3.11+、`readelf`）。
 进程冒烟命令为 `QA_PLUGIN_BINARY=<本次构建的二进制路径> bun scripts/qa-smoke.mjs`。

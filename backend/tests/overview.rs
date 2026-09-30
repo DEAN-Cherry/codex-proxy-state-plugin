@@ -10,6 +10,91 @@ fn account(id: &str, enabled: bool) -> Value {
 }
 
 #[tokio::test]
+async fn management_account_labels_use_email_then_name_then_id_without_merging_accounts() {
+    let cases = [
+        (
+            "acct-a",
+            "openai OAuth",
+            Some("  oauth@example.com \t"),
+            "oauth@example.com",
+        ),
+        (
+            "acct-b",
+            "Custom account name",
+            Some("custom@example.com"),
+            "custom@example.com",
+        ),
+        ("acct-c", "  Missing email  ", None, "Missing email"),
+        ("acct-d", "  Empty email\t", Some(""), "Empty email"),
+        ("acct-e", "\tBlank email  ", Some(" \t\n "), "Blank email"),
+        ("acct-f", " \t ", None, "acct-f"),
+        ("acct-g", "", Some(""), "acct-g"),
+        ("acct-h", " \n ", Some("\t "), "acct-h"),
+        (
+            "acct-i",
+            "Another account",
+            Some("oauth@example.com"),
+            "oauth@example.com",
+        ),
+    ];
+    let accounts: Vec<_> = cases
+        .iter()
+        .map(|(id, name, email, _)| {
+            json!({"account_id":id,"provider_id":"openai","name":name,"email":email,
+                "enabled":*id != "acct-b","group_ids":["private-group"],"updated_at_ms":1})
+        })
+        .collect();
+    let mut peer = Peer::start().await;
+    for (method, path, body, limit) in [
+        ("GET", "api/accounts", None, 200),
+        ("POST", "api/overview", Some(json!({})), 20),
+    ] {
+        let (status, result) = peer
+            .api(method, path, body, |method, params, payload| match method {
+                "host.data.accounts.list" => {
+                    assert_eq!(params, &json!({}));
+                    assert_eq!(
+                        serde_json::from_slice::<Value>(payload).unwrap(),
+                        json!({"provider_id":"openai","cursor":null,"limit":limit})
+                    );
+                    Ok((
+                        json!({}),
+                        serde_json::to_vec(&json!({
+                            "schema_version":1,"accounts":accounts,"next_cursor":null,
+                        }))
+                        .unwrap(),
+                    ))
+                }
+                "host.state.get" => {
+                    assert_eq!(path, "api/overview");
+                    assert!(payload.is_empty());
+                    assert!(cases.iter().any(|(id, ..)| params["key"] == *id));
+                    Ok((json!({"record":null}), Vec::new()))
+                }
+                _ => panic!("unexpected callback {method}"),
+            })
+            .await;
+        assert_eq!(status, 200, "{path}");
+        assert!(result["nextCursor"].is_null());
+        let expected: Vec<_> = cases
+            .iter()
+            .map(|(id, _, _, label)| {
+                let mut account = json!({
+                    "accountId":id,"accountName":label,"enabled":*id != "acct-b",
+                });
+                if path == "api/overview" {
+                    account["observationEnabled"] = json!(true);
+                    account["error"] = Value::Null;
+                    account["models"] = json!([]);
+                }
+                account
+            })
+            .collect();
+        assert_eq!(result["accounts"], json!(expected), "{path}");
+    }
+}
+
+#[tokio::test]
 async fn overview_keeps_empty_disabled_and_unavailable_accounts_distinct() {
     // Given: 当前规则与持久化的旧判断不同，聚合必须复用当前规则。
     let mut peer = Peer::start().await;
@@ -73,8 +158,8 @@ async fn overview_keeps_empty_disabled_and_unavailable_accounts_distinct() {
     assert_eq!(result["accounts"].as_array().unwrap().len(), 3);
     let observed = &result["accounts"][0];
     assert_eq!(observed["accountId"], "acct-a");
-    assert_eq!(observed["accountName"], "Shared account");
-    assert_eq!(result["accounts"][1]["accountName"], "Shared account");
+    assert_eq!(observed["accountName"], "private@example.com");
+    assert_eq!(result["accounts"][1]["accountName"], "private@example.com");
     assert_ne!(observed["accountId"], result["accounts"][1]["accountId"]);
     assert!(observed.get("credentialRevision").is_none());
     assert!(observed.get("email").is_none());

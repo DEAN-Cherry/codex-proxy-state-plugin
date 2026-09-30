@@ -16,7 +16,7 @@ WebSocket State 通过 `observer` 旁路事件回调采集，HTTP/SSE 仅采集�
 - 长度规则支持逗号分隔的正整数及闭区间，例如 `200,300,400-500`，空字符串表示不限长度
 - 保存最近 State 观测摘要、次数、长度分布、最近历史与本地过期时间
 - 独立管理页默认聚合全部账号的 State 概况，支持账号、模型和状态筛选，再下钻详情与账号配置
-- 账号名称为主显示，ID 用于区分同名账号和内部关联，外层账号组、内层模型表，按账号整组分页
+- 账号显示标签（邮箱优先、名称其次、ID 兜底）为主显示，ID 用于区分同名账号和内部关联，外层账号组、内层模型表，按账号整组分页
 - State 原文不返回浏览器、日志或诊断，摘要不表示模型能力或服务端有效期
 - 不可确定账号或实际发送模型的事件不归入任何账号
 
@@ -33,7 +33,7 @@ WebSocket State 通过 `observer` 旁路事件回调采集，HTTP/SSE 仅采集�
 {
   "accounts":[{
     "accountId":"acct_example",
-    "accountName":"主力账号",
+    "accountName":"account@example.test",
     "enabled":true,
     "observationEnabled":true,
     "error":null,
@@ -64,16 +64,18 @@ WebSocket State 通过 `observer` 旁路事件回调采集，HTTP/SSE 仅采集�
 页面按账号整组分页，名称或 ID 筛选选择账号，模型和状态筛选保留匹配模型所属的账号层级。
 筛选覆盖所有已加载账号，完成全部加载后才能表示全部账号。
 聚合查询不持有观测写锁，不阻塞业务观测写入等待队列。
+`accountName` 与 `api/accounts` 使用下述同一显示标签规则，并非宿主原始 `name` 字段。
 
 ### GET api/accounts
 
 ```json
-{"accounts":[{"accountId":"acct_example","accountName":"主力账号","enabled":true}],"nextCursor":null}
+{"accounts":[{"accountId":"acct_example","accountName":"account@example.test","enabled":true}],"nextCursor":null}
 ```
 
 账号来自 `host.data.accounts.list`（`account_facts`）非凭据运行投影，不依赖也不声明已废除的 `accounts` 权限。
-虽然基础事实包含可选邮箱等元数据，插件向页面返回的字段仍仅限于 ID、名称和启用状态（不向浏览器暴露邮箱或凭据），不调用原始凭据读取或账号写入接口。
-`accountName` 为空或仅含空白时，界面回退到 ID，存储键和所有操作始终使用 ID。
+两接口的 `accountName` 均由后端统一派生：优先取去除首尾空白后的非空 `email`，其次取去除首尾空白后的非空 `name`，最后回退到未经修改的账号 ID；邮箱为 `null`、空串或仅含空白均视为缺失。不按 OAuth 等名称字符串判断账号类型。
+`api/accounts` 的账号字段仍仅限于 ID、显示名称和启用状态；邮箱可通过 `accountName` 返回并在浏览器显示，但不新增独立 `email`、备注、Provider 或凭据字段，不调用原始凭据读取、宿主管理端或账号写入接口。
+SDK 的账号事实不提供认证类型或备注，因此不承诺完全复刻宿主 UI 的备注规则。相同显示标签不会合并账号；分页、分组、去重、存储键和所有操作始终使用 ID，宿主账号资料和既有持久化记录不变。
 支持 `?cursor=...` 分页，每页最多 200 个 OpenAI 账号。
 
 ### POST api/account

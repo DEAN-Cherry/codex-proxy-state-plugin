@@ -22,6 +22,7 @@ export class PluginPeer {
     ['acct_demo_empty_03', '尚未使用'],
     ['acct_demo_unavailable', '读取异常'],
   ])
+  accountEmails = new Map()
   accounts = [
     'acct_demo_pro_01', 'acct_demo_plus_02', 'acct_demo_empty_03', 'acct_demo_unavailable',
     ...Array.from({ length: 52 }, (_, index) => `acct_demo_${String(index + 1).padStart(3, '0')}`),
@@ -216,7 +217,8 @@ export class PluginPeer {
           schema_version: 1, next_cursor: remaining.length > ids.length ? ids.at(-1) : null,
           accounts: ids.map(account_id => ({
             account_id, provider_id: 'openai', name: this.accountNames.get(account_id) ?? `账号 ${account_id.slice(-3)}`,
-            enabled: !this.disabledAccounts.has(account_id), email: null, group_ids: [], updated_at_ms: 1,
+            enabled: !this.disabledAccounts.has(account_id), email: this.accountEmails.get(account_id) ?? null,
+            group_ids: [], updated_at_ms: 1,
           })),
         })) }
       }

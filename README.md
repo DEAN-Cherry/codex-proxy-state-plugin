@@ -6,8 +6,8 @@
 ## 兼容与安装
 
 - 插件身份：`dean-cherry.state-observer`，安装包目标为 Linux x86_64 GNU（glibc 2.28+）
-- v0.2.0 要求宿主 `>=3.18.0`，使用上游 v3.18.2 SDK（技术细节见 [CONTRACT.md](CONTRACT.md) 与 [backend/Cargo.toml](backend/Cargo.toml)）
-- 宿主 3.15.2～3.17.x 请指定标签 `v0.1.3`；宿主 `>=3.18.0` 使用 `v0.2.0` 或后续兼容版本
+- v0.2.1 要求宿主 `>=3.18.0`，使用上游 v3.18.2 SDK（技术细节见 [CONTRACT.md](CONTRACT.md) 与 [backend/Cargo.toml](backend/Cargo.toml)）
+- 宿主 3.15.2～3.17.x 请指定标签 `v0.1.3`；宿主 `>=3.18.0` 使用 `v0.2.1` 或后续兼容版本
 - 被停用的不兼容实例保留配置与私有数据，请勿卸载；安装兼容版本后核对绑定并重新启用
 - 在宿主「插件管理 → 安装 → GitHub」填写 `DEAN-Cherry/codex-proxy-state-plugin`，标签留空即查询最新稳定版；旧宿主不要留空
 - 或从 [Releases](https://github.com/DEAN-Cherry/codex-proxy-state-plugin/releases) 下载 `.tar.gz` 后「上传包」安装，不要使用 GitHub 自动生成的 Source code 归档
@@ -22,6 +22,8 @@
 
 停用、尚无观测和读取失败的账号都会保留在概况中，读取失败不等同于未观测。
 全部分页加载完成前，页面只显示「已加载」范围，不称为全局总计。
+账号显示遵循「邮箱优先、名称其次、ID 兜底」：邮箱和名称去除首尾空白后取非空值，否则保留原账号 ID。
+因此页面会显示完整邮箱，并可通过显示的邮箱筛选；同一邮箱的不同账号仍按 ID 分开，宿主账号资料不会被改写。
 
 ## 数据与限制
 
@@ -40,7 +42,7 @@
 ## 信任模型与故障隔离
 
 上游 3.18.x 无权限清单隔离，采用完整信任模型（trustedProcess），与宿主拥有相同系统身份，可访问数据、凭据、配置与网络，请只从可信来源安装。
-账号名称由 `host.data.accounts.list`（`account_facts`）非凭据运行投影获取；向浏览器返回的接口仍仅包含账号 ID、名称和启用状态，不暴露邮箱等字段。
+账号展示资料由 `host.data.accounts.list`（`account_facts`）非凭据运行投影获取；账号身份字段仍仅为 ID、显示名称 `accountName` 和启用状态。邮箱可作为 `accountName` 的值返回并显示，不新增独立 `email` 字段，不读取或返回凭据。SDK 不提供账号备注，页面不复刻宿主的备注展示规则。
 
 配置与摘要存放在宿主 `host.state.*`（保持 schemaVersion 1，插件 ID 仍为 `dean-cherry.state-observer`），插件不直接修改宿主数据库结构，已有私有状态及历史记录（含历史 SSE 来源）持续可读。写入最多等待 100 毫秒，存储失败只计入诊断，不返回给业务请求。
 中间件仍位于请求链中，插件进程退出或 RPC 错误可能影响请求，`delegate`（交给后续处理）仅为流转策略，不具备真正的进程故障隔离。
