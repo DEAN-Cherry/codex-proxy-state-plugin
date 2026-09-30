@@ -7,6 +7,7 @@ use codex_proxy_state_plugin::{
     settings::{LengthRules, Settings, Validation},
 };
 use gateway_plugin_sdk::call::middleware::{MiddlewareBodyFraming, MiddlewareHeader};
+use serde_json::json;
 
 fn sample(value: &[u8], at: u64, id: &str) -> Sample {
     let mut sample = Sample::capture(value, Source::HttpHeader, at).unwrap();
@@ -185,41 +186,66 @@ fn manifest_accepts_supported_hosts_without_an_upper_cap() {
     let manifest = codex_proxy_state_plugin::manifest().unwrap();
     manifest.validate().unwrap();
     let hosts = &manifest.engines.codex_proxy_rs;
-    for version in ["3.15.2", "3.16.0", "3.17.0", "4.0.0"] {
+    for version in ["3.18.0", "3.18.1", "3.18.2", "3.19.0"] {
         assert!(hosts.matches(&version.parse().unwrap()), "{version}");
     }
-    for version in ["3.15.1", "3.14.0"] {
+    for version in ["3.17.9", "3.16.0", "3.15.2"] {
         assert!(!hosts.matches(&version.parse().unwrap()), "{version}");
+    }
+}
+
+#[test]
+fn source_manifest_requires_the_new_contract_and_rejects_old_shapes() {
+    assert_eq!(gateway_plugin_sdk::PROTOCOL_VERSION, 2);
+    let source: serde_json::Value =
+        serde_json::from_str(include_str!("../../plugin.json")).unwrap();
+    assert_eq!(source["manifestVersion"], 2);
+    assert_eq!(source["version"], "0.2.0");
+    assert_eq!(source["contributes"]["middleware"]["version"], 3);
+    assert_eq!(
+        source["contributes"]["middleware"]["stages"],
+        json!(["request", "attempt"])
+    );
+    assert!(source["contributes"]["observer"].is_object());
+    for removed in ["permissions", "request_lifecycle", "web_socket_observer"] {
+        assert!(source.get(removed).is_none());
+        assert!(source["contributes"].get(removed).is_none());
+    }
+    for field in ["manifestVersion", "contributes", "permissions"] {
+        let mut old = source.clone();
+        match field {
+            "manifestVersion" => old[field] = json!(1),
+            "contributes" => old[field] = json!({"request_lifecycle":{}}),
+            _ => old[field] = json!(["accounts"]),
+        }
+        assert!(
+            gateway_plugin_sdk::Manifest::from_author_slice(&serde_json::to_vec(&old).unwrap())
+                .is_err(),
+            "{field}"
+        );
     }
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn plugin_session_reads_names_without_requesting_credentials() {
-    assert_eq!(
-        codex_proxy_state_plugin::manifest().unwrap().permissions,
-        [
-            gateway_plugin_sdk::Permission::Accounts,
-            gateway_plugin_sdk::Permission::Requests
-        ]
-        .into_iter()
-        .collect(),
-    );
     let mut peer = support::Peer::start().await;
     let (status, body) = peer.api("GET", "api/accounts", None, |method, params, payload| {
-        assert_eq!(method, "host.auth.list");
+        assert_eq!(method, "host.data.accounts.list");
         assert_eq!(params, &serde_json::json!({}));
         let query: serde_json::Value = serde_json::from_slice(payload).unwrap();
         assert_eq!(query["provider_id"], "openai");
         Ok((serde_json::json!({}), serde_json::to_vec(&serde_json::json!({
-            "accounts": [{"account_id":"acct-a","provider_id":"openai","name":"Primary account","enabled":true,
-                "credential_revision":1,"authentication_kind":"oauth","credential_state":"ready","has_refresh_token":true}],
-            "next_cursor": null
+            "schema_version":1,"accounts": [{"account_id":"acct-a","provider_id":"openai","name":"Primary account","enabled":true,
+                "email":"private@example.com","group_ids":[],"updated_at_ms":1}],"next_cursor": null
         })).unwrap()))
     }).await;
     assert_eq!(status, 200);
     assert_eq!(body["accounts"][0]["accountId"], "acct-a");
     assert_eq!(body["accounts"][0]["accountName"], "Primary account");
-    assert!(body["accounts"][0].get("credential_revision").is_none());
+    assert_eq!(
+        body["accounts"][0],
+        serde_json::json!({"accountId":"acct-a","accountName":"Primary account","enabled":true})
+    );
 }
 
 mod support;

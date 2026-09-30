@@ -1,10 +1,13 @@
 # State 观测插件
 
-宿主最低版本为 codex-proxy-rs v3.15.2，不设人为上限，要求以 `plugin.json` 的 `engines` 为准；
-构建使用的 SDK 提交以 `backend/Cargo.toml` 中 `gateway-plugin-sdk` 的 `rev` 为准。
+宿主最低版本为 codex-proxy-rs v3.18.0，不设人为上限，要求以 `plugin.json` 的 `engines` 为准；
+构建使用的 SDK 提交以 `backend/Cargo.toml` 中 `gateway-plugin-sdk` 的 `rev` 为准（固定至 v3.18.2 提交 `e30aad475560b94db2d999e2251d180e45d52671`）。
+契约规范遵循清单格式版本 2（`manifestVersion: 2`）、进程通信协议版本 2（`package.protocolVersion: 2`）、洋葱中间件版本 3（`middleware.version: 3`，声明挂载 `request` 与 `attempt` 阶段）以及统一事件观察能力（`observer`，替代原 `request_lifecycle` 与 `web_socket_observer`）。
+宿主运行采用完整信任模型（`trustedProcess`），无权限清单隔离，插件与宿主拥有相同系统身份，可访问数据、凭据、配置与网络；清单与握手均移除 `permissions` 字段。
+私有状态保持 `settings` 与 `observations` 命名空间的 `schemaVersion: 1`，插件 ID 维持 `dean-cherry.state-observer`；插件不直接修改宿主数据库结构（私有状态通过宿主 `host.state.*` 持久化），已有私有状态记录（含历史 SSE 观测）持续兼容可读。
 独立工程不依赖 fork 业务代码，不主动请求模型、不刷新 State、不改写请求、不参与调度。
 响应正文保持宿主未读句柄，不使用流映射或 `inspect_frames`。
-WebSocket State 通过旁路观察回调采集，HTTP/SSE 仅采集可见响应头，不读取正文。
+WebSocket State 通过 `observer` 旁路事件回调采集，HTTP/SSE 仅采集中间件可见响应头，不读取正文。
 
 ## 用户能力
 
@@ -68,8 +71,8 @@ WebSocket State 通过旁路观察回调采集，HTTP/SSE 仅采集可见响应�
 {"accounts":[{"accountId":"acct_example","accountName":"主力账号","enabled":true}],"nextCursor":null}
 ```
 
-账号来自需要 `accounts` 权限的 `host.auth.list` 非凭据运行投影。
-只向页面返回 ID、名称和启用状态，不调用原始凭据读取或账号写入接口。
+账号来自 `host.data.accounts.list`（`account_facts`）非凭据运行投影，不依赖也不声明已废除的 `accounts` 权限。
+虽然基础事实包含可选邮箱等元数据，插件向页面返回的字段仍仅限于 ID、名称和启用状态（不向浏览器暴露邮箱或凭据），不调用原始凭据读取或账号写入接口。
 `accountName` 为空或仅含空白时，界面回退到 ID，存储键和所有操作始终使用 ID。
 支持 `?cursor=...` 分页，每页最多 200 个 OpenAI 账号。
 

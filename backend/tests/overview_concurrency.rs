@@ -35,16 +35,20 @@ async fn overview_reads_do_not_wait_for_the_observation_write_lock() {
     assert_eq!(method, "host.state.put");
 
     // When: 不先完成写入，独立聚合读取仍必须能完整返回。
-    let (status, overview) = peer.api("POST", "api/overview", Some(json!({})), |method, _, _| match method {
-        "host.auth.list" => Ok((json!({}), serde_json::to_vec(&json!({
-            "next_cursor":null,"accounts":[{
+    let (status, overview) = peer
+        .api("POST", "api/overview", Some(json!({})), |method, _, _| {
+            match method {
+        "host.data.accounts.list" => Ok((json!({}), serde_json::to_vec(&json!({
+            "schema_version":1,"next_cursor":null,"accounts":[{
                 "account_id":"acct-a","provider_id":"openai","enabled":true,"name":"Account A",
-                "credential_revision":1,"authentication_kind":"oauth","credential_state":"ready","has_refresh_token":true,
+                "email":null,"group_ids":[],"updated_at_ms":1,
             }],
         })).unwrap())),
         "host.state.get" => Ok((json!({"record":null}), Vec::new())),
         _ => panic!("unexpected callback {method}"),
-    }).await;
+    }
+        })
+        .await;
 
     // Then: 先收到聚合结果，再允许原写入完成，不依赖调度延迟。
     assert_eq!(status, 200);

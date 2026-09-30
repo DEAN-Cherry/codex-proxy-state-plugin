@@ -47,7 +47,6 @@ impl Peer {
                 generation: 1,
                 incarnation: "inc".into(),
                 configuration: json!({}),
-                permissions: manifest.permissions.into_iter().collect(),
                 contributes: manifest.contributes,
             },
         }))
@@ -87,6 +86,7 @@ impl Peer {
                     incarnation: "inc".into(),
                     stage,
                     timeout_ms: 10_000,
+                    resource_stream: false,
                     resource_scope_id: "scope".into(),
                     request_id: Some("request".into()),
                     attempt_id: None,

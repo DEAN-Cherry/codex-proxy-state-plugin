@@ -13,6 +13,7 @@ pub fn json_reply(
     Ok(TypedReply::new(ManagementResponse {
         status,
         content_type: "application/json".to_owned(),
+        headers: Vec::new(),
     })
     .with_payload(payload))
 }

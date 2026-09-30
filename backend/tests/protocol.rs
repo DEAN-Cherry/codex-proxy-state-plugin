@@ -18,7 +18,11 @@ impl Store {
         if self.fail {
             return Err(PluginFault::new(ErrorCode::Fault, "synthetic failure"));
         }
-        let key = format!("{}:{}", params["namespace"], params["key"]);
+        let key = format!(
+            "{}:{}",
+            params["namespace"].as_str().unwrap(),
+            params["key"].as_str().unwrap()
+        );
         match method {
             "host.state.get" => Ok((json!({"record":self.records.get(&key)}), Vec::new())),
             "host.state.put" => {
@@ -47,7 +51,7 @@ impl Store {
 fn head() -> Value {
     json!({"request_id":"request","mount":"request","operation":"generate","protocol":"openai",
         "endpoint":"/v1/responses","transport":"http_sse","model":"public-alias","headers":[],
-        "body_visible":true})
+        "settings_sources":{},"client_key_id":"key-a","account_group_ids":[]})
 }
 
 fn response() -> Reply {
@@ -59,12 +63,12 @@ fn response() -> Reply {
 }
 
 async fn terminal(peer: &mut Peer, store: &mut Store) {
-    peer.call("policy.observe_request", Stage::Observation, json!({}),
-        serde_json::to_vec(&json!({
+    peer.call("observer.observe", Stage::Observation, json!({"event":"request_completed","data":{
             "event_id":"terminal","request_id":"request","config_revision":1,"operation":"generate",
             "account_id":"acct-a","upstream_model":"actual-model","response_model":"reported-other-model",
             "requested_model":"public-alias","provider":"openai","completed_at_ms":1,
-        })).unwrap(),
+            "terminal":{"outcome":"succeeded","send_state":"sent","attempt_count":1},"usage":{}
+        }}), Vec::new(),
         |method, params, payload| store.call(method, params, payload)).await;
 }
 
@@ -252,4 +256,70 @@ async fn invalid_settings_are_rejected_without_storage_calls() {
         .await;
     // Then
     assert_eq!(status, 400);
+}
+
+#[tokio::test]
+async fn schema_one_settings_and_sse_history_survive_restart_and_new_observation() {
+    let mut store = Store::default();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    store.records.insert(
+        "settings:acct-a".into(),
+        json!({
+            "schema_version":1,"version":4,"value":{
+                "enabled":true,"models":["actual-model"],"lengthRules":"3,4","retentionHours":24
+            }
+        }),
+    );
+    store.records.insert(
+        "observations:acct-a".into(),
+        json!({
+            "schema_version":1,"version":7,"value":{"models":[{"model":"actual-model","history":[{
+                "observedAtMs":now-1000,"length":4,"fingerprint":"abcd1234abcd",
+                "source":"sse_metadata","validation":"matched","eventId":"persisted-sse"
+            }]}]}
+        }),
+    );
+    let mut peer = Peer::start().await;
+    let (_, before) = peer
+        .api(
+            "POST",
+            "api/account",
+            Some(json!({"accountId":"acct-a"})),
+            |method, params, payload| store.call(method, params, payload),
+        )
+        .await;
+    assert_eq!(before["version"], 4, "{before}");
+    assert_eq!(before["models"][0]["history"][0]["source"], "sse_metadata");
+    drop(peer);
+    let mut peer = Peer::start().await;
+    peer.call(
+        "middleware.handle",
+        Stage::Request,
+        head(),
+        Vec::new(),
+        |method, _, _| {
+            assert_eq!(method, "host.middleware.next");
+            response()
+        },
+    )
+    .await;
+    terminal(&mut peer, &mut store).await;
+    let (_, after) = peer
+        .api(
+            "POST",
+            "api/account",
+            Some(json!({"accountId":"acct-a"})),
+            |method, params, payload| store.call(method, params, payload),
+        )
+        .await;
+    assert_eq!(after["models"][0]["observations"], 2);
+    assert_eq!(store.records["observations:acct-a"]["schema_version"], 1);
+    assert_eq!(
+        store.records["observations:acct-a"]["value"]["models"][0]["history"][0]["eventId"],
+        "persisted-sse"
+    );
+    assert_eq!(store.records["settings:acct-a"]["version"], 4);
 }

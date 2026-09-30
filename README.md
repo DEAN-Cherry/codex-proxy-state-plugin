@@ -1,18 +1,17 @@
 # State 观测插件
 
 独立的 Codex Proxy RS 插件，按 **账号 + 实际发送的上游模型** 记录业务响应中的 State 摘要。
-不主动发起请求、不刷新或重写 State、不改变选号或计费，不修改宿主数据库。
+不主动发起请求、不刷新或重写 State、不改变选号或计费，不执行宿主数据库迁移。
 
 ## 兼容与安装
 
 - 插件身份：`dean-cherry.state-observer`，安装包目标为 Linux x86_64 GNU（glibc 2.28+）
-- v0.1.3 要求宿主 `>=3.15.2`，不设人为上限（见 [plugin.json](plugin.json) 的 `engines`）；
-  SDK 按 v3.17.0 编译，这不代表已在每个宿主版本上完成完整安装验证
-- v0.1.2 包内清单限制为 `<3.16.0`；3.16 及以上宿主请安装 v0.1.3 的插件包
-- 在宿主「插件管理 → 安装 → GitHub」填写 `DEAN-Cherry/codex-proxy-state-plugin`，标签留空即查询最新稳定版
-- 或从 [Releases](https://github.com/DEAN-Cherry/codex-proxy-state-plugin/releases) 下载 `.tar.gz` 后「上传包」安装，
-  不要使用 GitHub 自动生成的 Source code 归档
-- 核对权限后安装、启用，打开插件页面「State 观测」
+- v0.2.0 要求宿主 `>=3.18.0`，使用上游 v3.18.2 SDK（技术细节见 [CONTRACT.md](CONTRACT.md) 与 [backend/Cargo.toml](backend/Cargo.toml)）
+- 宿主 3.15.2～3.17.x 请指定标签 `v0.1.3`；宿主 `>=3.18.0` 使用 `v0.2.0` 或后续兼容版本
+- 被停用的不兼容实例保留配置与私有数据，请勿卸载；安装兼容版本后核对绑定并重新启用
+- 在宿主「插件管理 → 安装 → GitHub」填写 `DEAN-Cherry/codex-proxy-state-plugin`，标签留空即查询最新稳定版；旧宿主不要留空
+- 或从 [Releases](https://github.com/DEAN-Cherry/codex-proxy-state-plugin/releases) 下载 `.tar.gz` 后「上传包」安装，不要使用 GitHub 自动生成的 Source code 归档
+- 安装并启用后，打开插件页面「State 观测」
 
 ## 使用
 
@@ -38,22 +37,22 @@
 
 用户能力与管理 API 合同见 [CONTRACT.md](CONTRACT.md)，页面设计见 [DESIGN.md](DESIGN.md)。
 
-## 权限与故障隔离
+## 信任模型与故障隔离
 
-插件申请 `requests` 与 `accounts` 权限，不申请 `data`、`network` 或 `models`。
-账号名称来自 `host.auth.list` 的非凭据投影。**`accounts` 授权域本身包含读取原始凭据和修改账号的能力**，
-本插件不调用 `host.auth.get`、`host.auth.get_runtime` 或 `host.auth.save`，但安装和升级时仍需按完整访问域核对。
+上游 3.18.x 无权限清单隔离，采用完整信任模型（trustedProcess），与宿主拥有相同系统身份，可访问数据、凭据、配置与网络，请只从可信来源安装。
+账号名称由 `host.data.accounts.list`（`account_facts`）非凭据运行投影获取；向浏览器返回的接口仍仅包含账号 ID、名称和启用状态，不暴露邮箱等字段。
 
-配置与摘要存放在宿主 `host.state.*`，写入最多等待 100 毫秒，存储失败只计入诊断，不返回给业务请求。
-中间件仍位于请求链中，插件进程退出或 RPC 错误可能影响请求，不具备旁路观察的故障隔离。
+配置与摘要存放在宿主 `host.state.*`（保持 schemaVersion 1，插件 ID 仍为 `dean-cherry.state-observer`），插件不直接修改宿主数据库结构，已有私有状态及历史记录（含历史 SSE 来源）持续可读。写入最多等待 100 毫秒，存储失败只计入诊断，不返回给业务请求。
+中间件仍位于请求链中，插件进程退出或 RPC 错误可能影响请求，`delegate`（交给后续处理）仅为流转策略，不具备真正的进程故障隔离。
 建议将实例 `request`、`attempt` 绑定的「插件失败时」设为「交给后续处理」（`delegate`）；
 宿主安装器默认的 `reject` 不由插件清单控制，本插件也不会修改宿主实例配置。
 本插件没有配置项或认证映射，宿主可能隐藏其设置入口；此时可按
-[官方实例 API](https://github.com/zyycn/codex-proxy-rs/blob/v3.17.0/docs/api.md#121-运行实例) 修改绑定。
+[官方实例 API](https://github.com/zyycn/codex-proxy-rs/blob/v3.18.2/docs/api.md#121-运行实例) 修改绑定。
 
 ## 开发
 
-构建、测试、本地 QA 与打包命令见 [docs/development.md](docs/development.md)。
+稳定版标签由 GitHub Actions 在云端检查、构建、打包并验证附件后发布，无需本地构建。
+开发命令与发布流程见 [docs/development.md](docs/development.md)。
 
 ## 许可
 

@@ -1,0 +1,136 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*', '!v*-*', '!v*\+*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing stable tag (vMAJOR.MINOR.PATCH) at the selected ref's commit
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      RUST_MIN_STACK: 16777216
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      QA_PLUGIN_BINARY: ${{ github.workspace }}/backend/target/x86_64-unknown-linux-gnu/release/codex-proxy-state-plugin
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate release tag and source versions
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          tag_ref="refs/tags/$RELEASE_TAG"
+          remote_commit=$(git ls-remote --exit-code origin "$tag_ref" "$tag_ref^{}" |
+            awk '$2 ~ /\^\{\}$/ { peeled=$1 } $2 !~ /\^\{\}$/ { direct=$1 } END { print peeled ? peeled : direct }')
+          [[ "$remote_commit" == "$GITHUB_SHA" ]]
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
+          python3 - <<'PY'
+          import json, os, re, tomllib
+          from pathlib import Path
+          cargo = tomllib.loads(Path('backend/Cargo.toml').read_text())
+          manifest = json.loads(Path('plugin.json').read_text())
+          frontend = json.loads(Path('frontend/package.json').read_text())
+          version = os.environ['RELEASE_TAG'][1:]
+          assert manifest['version'] == cargo['package']['version'] == frontend['version'] == version
+          assert Path('release/notes.md').read_text().splitlines()[0] == f'# v{version}'
+          sdk = cargo['dependencies']['gateway-plugin-sdk']
+          assert sdk['git'] == 'https://github.com/zyycn/codex-proxy-rs.git'
+          assert re.fullmatch(r'[0-9a-f]{40}', sdk['rev'])
+          lock = tomllib.loads(Path('backend/Cargo.lock').read_text())
+          locked_sdk = next(package for package in lock['package'] if package['name'] == 'gateway-plugin-sdk')
+          assert locked_sdk['source'] == f"git+{sdk['git']}?rev={sdk['rev']}#{sdk['rev']}"
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write(f"SDK_REV={sdk['rev']}\n")
+          PY
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+      - uses: dtolnay/rust-toolchain@1a3a6d54512beeaffd394f8d516ca16f2c506a20 # 1.97
+        with:
+          components: rustfmt,clippy
+          targets: x86_64-unknown-linux-gnu
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: '1.4.2'
+      - name: Install pinned glibc baseline build tools
+        run: |
+          venv="$RUNNER_TEMP/release-tools"
+          python3 -m venv "$venv"
+          "$venv/bin/python" -m pip install --only-binary=:all: cargo-zigbuild==0.23.4 ziglang==0.14.1
+          echo "$venv/bin" >> "$GITHUB_PATH"
+          zig_path=$("$venv/bin/python" -c 'from pathlib import Path; import ziglang; print(Path(ziglang.__file__).parent / "zig")')
+          test -x "$zig_path"
+          echo "CARGO_ZIGBUILD_ZIG_PATH=$zig_path" >> "$GITHUB_ENV"
+      - name: Frontend checks and build
+        run: |
+          pnpm --dir frontend install --frozen-lockfile
+          pnpm --dir frontend lint
+          pnpm --dir frontend test
+          pnpm --dir frontend build
+      - name: Backend checks
+        run: |
+          cargo fmt --manifest-path backend/Cargo.toml -- --check
+          cargo clippy --manifest-path backend/Cargo.toml --all-targets --locked -- -D warnings
+          cargo test --manifest-path backend/Cargo.toml --locked
+      - name: Build fresh Linux x86_64 release for glibc 2.28
+        run: cargo zigbuild --manifest-path backend/Cargo.toml --locked --release --target x86_64-unknown-linux-gnu.2.28
+      - name: Protocol 2 smoke test of the release binary
+        run: timeout --kill-after=5s 90s bun scripts/qa-smoke.mjs
+      - name: Install SDK-matched official packager
+        run: |
+          cargo install --locked --git https://github.com/zyycn/codex-proxy-rs.git \
+            --rev "$SDK_REV" codex-proxy-plugin-cli --root .tools
+      - name: Package and verify release assets
+        run: |
+          .tools/bin/cpr-plugin package --manifest plugin.json \
+            --binary "$QA_PLUGIN_BINARY" --target x86_64-unknown-linux-gnu \
+            --resource-map web=frontend/dist --output-dir dist
+          python3 scripts/verify-package.py --tag "$RELEASE_TAG" --directory dist --binary "$QA_PLUGIN_BINARY"
+      - name: Publish verified assets through a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          verify_remote_tag() {
+            local tag_ref="refs/tags/$RELEASE_TAG"
+            local remote_commit
+            remote_commit=$(git ls-remote --exit-code origin "$tag_ref" "$tag_ref^{}" |
+              awk '$2 ~ /\^\{\}$/ { peeled=$1 } $2 !~ /\^\{\}$/ { direct=$1 } END { print peeled ? peeled : direct }')
+            [[ "$remote_commit" == "$GITHUB_SHA" ]]
+          }
+          verify_remote_tag
+          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; refusing to overwrite it." >&2
+            exit 1
+          fi
+          archive="dean-cherry.state-observer-${RELEASE_TAG#v}-x86_64-unknown-linux-gnu.tar.gz"
+          gh release create "$RELEASE_TAG" "dist/$archive" "dist/$archive.sha256" \
+            --verify-tag --draft --title "$RELEASE_TAG" --notes-file release/notes.md
+          download_dir=$(mktemp -d "$RUNNER_TEMP/release-download.XXXXXX")
+          gh release download "$RELEASE_TAG" --dir "$download_dir"
+          python3 scripts/verify-package.py --tag "$RELEASE_TAG" --directory "$download_dir" --binary "$QA_PLUGIN_BINARY"
+          cmp "dist/$archive" "$download_dir/$archive"
+          cmp "dist/$archive.sha256" "$download_dir/$archive.sha256"
+          verify_remote_tag
+          gh release edit "$RELEASE_TAG" --verify-tag --draft=false --latest --prerelease=false

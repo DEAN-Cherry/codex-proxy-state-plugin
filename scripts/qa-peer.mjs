@@ -42,7 +42,7 @@ export class PluginPeer {
     const contributes = Object.fromEntries(Object.entries(this.#manifest.contributes).map(([name, declaration]) => [
       name, {
         id: `${this.#manifest.publisher}.${this.#manifest.name}.${name.replaceAll('_', '-')}`,
-        version: 1,
+        version: name === 'middleware' ? 3 : 1,
         stages: name === 'middleware' ? declaration.stages : [name === 'management' ? 'management' : 'observation'],
         ...declaration,
       },
@@ -50,15 +50,20 @@ export class PluginPeer {
     this.#send({
       type: 'hello',
       handshake: {
-        protocol_version: 1, artifact_sha256: 'a'.repeat(64),
+        protocol_version: 2, artifact_sha256: 'a'.repeat(64),
         plugin_id: `${this.#manifest.publisher}.${this.#manifest.name}`,
         instance_id: 'qa-state-observer', generation: 1, incarnation: 'qa-process',
-        configuration: {}, permissions: this.#manifest.permissions, contributes,
+        configuration: {}, contributes,
       },
     })
     await this.#ready.promise
     const registration = await this.call('plugin.register', 'registration', {}, Buffer.alloc(0))
     if (registration.message.type !== 'result') throw new Error('registration failed')
+    const registered = registration.message.result.contributes
+    if (registered.middleware?.version !== 3 ||
+        registered.observer?.stages?.[0] !== 'observation' ||
+        Object.keys(registered).sort().join(',') !== 'management,middleware,observer')
+      throw new Error('registration lacks protocol-2 middleware and observer capabilities')
     return this
   }
 
@@ -76,7 +81,7 @@ export class PluginPeer {
       type: 'call', id, method,
       context: {
         call_id: id, instance_id: 'qa-state-observer', generation: 1, incarnation: 'qa-process',
-        stage, timeout_ms: 10_000, resource_scope_id: 'qa-scope', request_id: requestId,
+        stage, timeout_ms: 10_000, resource_stream: false, resource_scope_id: 'qa-scope', request_id: requestId,
         account_id: params.account_id,
       },
       params,
@@ -98,7 +103,8 @@ export class PluginPeer {
     const id = crypto.randomUUID()
     await this.call('middleware.handle', 'request', {
       request_id: id, mount: 'request', operation: 'generate', protocol: 'openai',
-      endpoint: '/v1/responses', transport: 'http_sse', model, headers: [], body_visible: true,
+      endpoint: '/v1/responses', transport: 'http_sse', model, headers: [],
+      settings_sources: {}, client_key_id: 'qa-key', account_group_ids: [],
     }, Buffer.from(JSON.stringify({ model, input: 'synthetic QA request', stream: true })),
     method => {
       if (method !== 'host.middleware.next') throw new Error(`unexpected callback ${method}`)
@@ -107,11 +113,11 @@ export class PluginPeer {
         headers: [{ name: 'x-codex-turn-state', value: [...Buffer.from('Q'.repeat(length))] }],
       }, payload: Buffer.alloc(0) }
     }, id)
-    await this.call('policy.observe_request', 'observation', {}, Buffer.from(JSON.stringify({
+    await this.call('observer.observe', 'observation', { event: 'request_completed', data: {
       event_id: id, request_id: id, config_revision: 1, operation: 'generate',
       account_id: account, upstream_model: model, provider: 'openai', completed_at_ms: Date.now(),
-      terminal: { outcome: 'succeeded', send_state: 'sent', attempt_count: 1 },
-    })), undefined, id)
+      terminal: { outcome: 'succeeded', send_state: 'sent', attempt_count: 1 }, usage: {},
+    } }, Buffer.alloc(0), undefined, id)
   }
 
   async observeWebsocket(account, model, length) {
@@ -119,7 +125,8 @@ export class PluginPeer {
     const response = await this.call('middleware.handle', 'attempt', {
       request_id: id, mount: 'attempt', attempt_index: 1, operation: 'generate', protocol: 'openai',
       endpoint: '/v1/responses', transport: 'web_socket', provider: 'openai', model,
-      account_id: account, headers: [], body_visible: true,
+      account_id: account, headers: [],
+      settings_sources: {}, client_key_id: 'qa-key', account_group_ids: [],
     }, Buffer.from(JSON.stringify({ model: 'public-alias', input: 'synthetic QA request' })),
     method => {
       if (method !== 'host.middleware.next') throw new Error(`observer attempted body access: ${method}`)
@@ -129,11 +136,11 @@ export class PluginPeer {
       }, payload: Buffer.alloc(0) }
     }, id)
     if (response.message.result.body.kind !== 'pass_through') throw new Error('observer took stream ownership')
-    await this.call('websocket.response_event', 'observation', {
+    await this.call('observer.observe', 'observation', { event: 'websocket_response', data: {
       event_id: id, request_id: id, config_revision: 1, operation: 'generate', protocol: 'openai',
       provider: 'openai', attempt_index: 1, sequence: 1, payload_included: true,
       requested_model: 'public-alias', account_id: account, event_type: 'codex.response.metadata',
-    }, Buffer.from(JSON.stringify({ type: 'codex.response.metadata', headers: { 'x-codex-turn-state': 'Q'.repeat(length) } })), undefined, id)
+    } }, Buffer.from(JSON.stringify({ type: 'codex.response.metadata', headers: { 'x-codex-turn-state': 'Q'.repeat(length) } })), undefined, id)
   }
 
   #send(message, payload = Buffer.alloc(0)) {
@@ -201,16 +208,15 @@ export class PluginPeer {
         this.states.set(key, { value: structuredClone(params.value), version, schema_version: 1 })
         return { result: { version }, payload: Buffer.alloc(0) }
       }
-      case 'host.auth.list': {
+      case 'host.data.accounts.list': {
         const query = JSON.parse(payload.toString())
         const remaining = this.accounts.filter(id => !query.cursor || id > query.cursor).sort()
         const ids = remaining.slice(0, query.limit)
         return { result: {}, payload: Buffer.from(JSON.stringify({
-          next_cursor: remaining.length > ids.length ? ids.at(-1) : null,
+          schema_version: 1, next_cursor: remaining.length > ids.length ? ids.at(-1) : null,
           accounts: ids.map(account_id => ({
             account_id, provider_id: 'openai', name: this.accountNames.get(account_id) ?? `账号 ${account_id.slice(-3)}`,
-            enabled: !this.disabledAccounts.has(account_id), credential_revision: 1,
-            authentication_kind: 'oauth', credential_state: 'ready', has_refresh_token: true,
+            enabled: !this.disabledAccounts.has(account_id), email: null, group_ids: [], updated_at_ms: 1,
           })),
         })) }
       }

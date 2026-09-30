@@ -1,5 +1,3 @@
-use std::collections::BTreeSet;
-
 use codex_proxy_state_plugin::{PLUGIN_ID, manifest, plugin};
 use gateway_plugin_sdk::client::{PluginSession, SessionConfig, SessionError};
 
@@ -12,10 +10,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .await?;
     let manifest = manifest()?;
-    let granted: BTreeSet<_> = session.handshake().permissions.iter().copied().collect();
     if session.handshake().plugin_id != PLUGIN_ID
         || session.handshake().contributes != manifest.contributes
-        || granted != manifest.permissions
         || !session
             .handshake()
             .configuration

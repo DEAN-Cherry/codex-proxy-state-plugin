@@ -5,9 +5,8 @@ use serde_json::{Value, json};
 use support::Peer;
 
 fn account(id: &str, enabled: bool) -> Value {
-    json!({"account_id":id,"provider_id":"openai","credential_revision":1,
-        "name":"Shared account","enabled":enabled,"authentication_kind":"oauth",
-        "credential_state":"ready","has_refresh_token":true})
+    json!({"account_id":id,"provider_id":"openai","name":"Shared account",
+        "email":"private@example.com","group_ids":[],"updated_at_ms":1,"enabled":enabled})
 }
 
 #[tokio::test]
@@ -26,7 +25,7 @@ async fn overview_keeps_empty_disabled_and_unavailable_accounts_distinct() {
             "api/overview",
             Some(json!({})),
             |method, params, payload| match method {
-                "host.auth.list" => {
+                "host.data.accounts.list" => {
                     assert_eq!(params, &json!({}));
                     let query: Value = serde_json::from_slice(payload).unwrap();
                     assert_eq!(
@@ -36,7 +35,7 @@ async fn overview_keeps_empty_disabled_and_unavailable_accounts_distinct() {
                     Ok((
                         json!({}),
                         serde_json::to_vec(&json!({
-                            "accounts":accounts,"next_cursor":null,
+                            "schema_version":1,"accounts":accounts,"next_cursor":null,
                         }))
                         .unwrap(),
                     ))
@@ -103,7 +102,7 @@ async fn overview_forwards_account_cursor_and_preserves_next_page() {
             "api/overview",
             Some(json!({"cursor":"acct-b","limit":1})),
             |method, _, payload| {
-                if method == "host.auth.list" {
+                if method == "host.data.accounts.list" {
                     assert_eq!(
                         serde_json::from_slice::<Value>(payload).unwrap(),
                         json!({"provider_id":"openai","cursor":"acct-b","limit":1})
@@ -111,7 +110,7 @@ async fn overview_forwards_account_cursor_and_preserves_next_page() {
                     Ok((
                         json!({}),
                         serde_json::to_vec(&json!({
-                            "accounts":[account("acct-c",true)],"next_cursor":"acct-c",
+                            "schema_version":1,"accounts":[account("acct-c",true)],"next_cursor":"acct-c",
                         }))
                         .unwrap(),
                     ))
@@ -156,7 +155,7 @@ async fn overview_directory_failure_is_not_an_empty_success() {
     // When
     let (status, _) = peer
         .api("POST", "api/overview", Some(json!({})), |method, _, _| {
-            assert_eq!(method, "host.auth.list");
+            assert_eq!(method, "host.data.accounts.list");
             Err(PluginFault::new(
                 ErrorCode::Fault,
                 "synthetic directory failure",

@@ -3,9 +3,10 @@ use std::sync::Arc;
 use gateway_plugin_sdk::{
     PluginFault,
     call::{
-        middleware::MiddlewareMount, observation::ObserveWebSocketResponse, policy::ObserveRequest,
+        middleware::MiddlewareMount,
+        observation::{Event, RequestCompleted, WebSocketResponse},
     },
-    client::{Empty, MiddlewareCall, MiddlewareResponse, TypedCall, TypedReply},
+    client::{Empty, MiddlewareResponse, RequestCall, TypedCall, TypedReply},
 };
 
 use crate::{
@@ -16,7 +17,7 @@ use crate::{
 
 pub async fn middleware(
     state: Arc<AppState>,
-    call: MiddlewareCall,
+    call: RequestCall,
 ) -> Result<MiddlewareResponse, PluginFault> {
     let id = call.request.head.request_id.clone();
     let mount = call.request.head.mount;
@@ -54,62 +55,68 @@ pub async fn middleware(
     Ok(response)
 }
 
-pub async fn websocket(
+pub async fn observe(
     state: &AppState,
-    call: TypedCall<ObserveWebSocketResponse>,
+    call: TypedCall<Event>,
 ) -> Result<TypedReply<Empty>, PluginFault> {
-    if call.request.provider != "openai" || !call.request.payload_included {
-        return Ok(TypedReply::new(Empty {}));
+    match call.request {
+        Event::RequestCompleted(event) => terminal(state, &call.host, *event).await,
+        Event::WebSocketResponse(event) => {
+            websocket(state, &call.host, *event, &call.payload).await
+        }
+    }
+    Ok(TypedReply::new(Empty {}))
+}
+
+async fn websocket(
+    state: &AppState,
+    host: &gateway_plugin_sdk::client::HostClient,
+    event: WebSocketResponse,
+    payload: &[u8],
+) {
+    if event.provider != "openai" || !event.payload_included {
+        return;
     }
     let mut samples = extract::frame(
-        &call.payload,
+        payload,
         gateway_plugin_sdk::call::middleware::MiddlewareBodyFraming::JsonDocument,
         now_ms(),
     );
     if samples.is_empty() {
-        return Ok(TypedReply::new(Empty {}));
+        return;
     }
-    let owner = state.collector().attempt_owner(
-        &call.request.request_id,
-        call.request.attempt_index,
-        state.elapsed(),
-    );
+    let owner =
+        state
+            .collector()
+            .attempt_owner(&event.request_id, event.attempt_index, state.elapsed());
     let Some(owner) =
-        owner.filter(|owner| call.request.account_id.as_deref() == Some(owner.account.as_str()))
+        owner.filter(|owner| event.account_id.as_deref() == Some(owner.account.as_str()))
     else {
         let mut collector = state.collector();
         collector.unattributed = collector
             .unattributed
             .saturating_add(u64::try_from(samples.len()).unwrap_or(u64::MAX));
-        return Ok(TypedReply::new(Empty {}));
+        return;
     };
     for (index, sample) in samples.iter_mut().enumerate() {
         sample.event_id = event_id(
-            &call.request.event_id,
-            &format!("websocket:{}:{index}", call.request.sequence),
+            &event.event_id,
+            &format!("websocket:{}:{index}", event.sequence),
         );
     }
-    state
-        .flush(&call.host, vec![Batch { owner, samples }])
-        .await;
-    Ok(TypedReply::new(Empty {}))
+    state.flush(host, vec![Batch { owner, samples }]).await;
 }
 
-pub async fn terminal(
+async fn terminal(
     state: &AppState,
-    call: TypedCall<ObserveRequest>,
-) -> Result<TypedReply<Empty>, PluginFault> {
-    let owner = (call.request.provider.as_deref() == Some("openai"))
-        .then(|| {
-            Attribution::new(
-                call.request.account_id.as_deref(),
-                call.request.upstream_model.as_deref(),
-            )
-        })
+    host: &gateway_plugin_sdk::client::HostClient,
+    event: RequestCompleted,
+) {
+    let owner = (event.provider.as_deref() == Some("openai"))
+        .then(|| Attribution::new(event.account_id.as_deref(), event.upstream_model.as_deref()))
         .flatten();
     let batches = state
         .collector()
-        .terminal(&call.request.request_id, owner, state.elapsed());
-    state.flush(&call.host, batches).await;
-    Ok(TypedReply::new(Empty {}))
+        .terminal(&event.request_id, owner, state.elapsed());
+    state.flush(host, batches).await;
 }
