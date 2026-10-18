@@ -1,6 +1,6 @@
 # 开发指南
 
-工具链：Rust 1.97（见 `rust-toolchain.toml`）、Node.js 24+、`frontend/package.json` 指定的 pnpm；本地 QA 另需 Bun。
+工具链：Rust 1.99.1（见 `rust-toolchain.toml`）、Node.js 24+、`frontend/package.json` 指定的 pnpm；本地 QA 另需 Bun。
 依赖固定在 `backend/Cargo.lock` 与 `frontend/pnpm-lock.yaml`，不需要同级宿主源码。
 SDK 版本以 `backend/Cargo.toml` 中 `gateway-plugin-sdk` 的 `rev` 为准，宿主版本要求以 `plugin.json` 的 `engines` 为准。
 
@@ -46,7 +46,7 @@ cargo build --manifest-path backend/Cargo.toml --locked
 单纯使用原生 `cargo build --target x86_64-unknown-linux-gnu` 会链接构建环境的 glibc，不能自动保证 2.28 基线：
 
 ```sh
-rustup target add x86_64-unknown-linux-gnu --toolchain 1.97.0
+rustup target add x86_64-unknown-linux-gnu --toolchain 1.99.1
 cargo zigbuild --manifest-path backend/Cargo.toml --release --locked --target x86_64-unknown-linux-gnu.2.28
 ```
 
@@ -79,5 +79,5 @@ cargo install --locked --git https://github.com/zyycn/codex-proxy-rs.git \
 ```
 
 生成的 `.tar.gz` 与 `.sha256` 通过摘要绑定二进制和静态资源。
-在 Linux 上可用 `python3 scripts/verify-package.py --tag v0.2.1 --directory dist --binary <本次构建的二进制路径>` 复现包校验（需 Python 3.11+、`readelf`）。
+在 Linux 上可用 `python3 scripts/verify-package.py --tag v0.3.0 --directory dist --binary <本次构建的二进制路径>` 复现包校验（需 Python 3.11+、`readelf`）。
 进程冒烟命令为 `QA_PLUGIN_BINARY=<本次构建的二进制路径> bun scripts/qa-smoke.mjs`。

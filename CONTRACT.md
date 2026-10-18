@@ -1,8 +1,8 @@
 # State 观测插件
 
-宿主最低版本为 codex-proxy-rs v3.18.0，不设人为上限，要求以 `plugin.json` 的 `engines` 为准；
-构建使用的 SDK 提交以 `backend/Cargo.toml` 中 `gateway-plugin-sdk` 的 `rev` 为准（固定至 v3.18.2 提交 `e30aad475560b94db2d999e2251d180e45d52671`）。
-契约规范遵循清单格式版本 2（`manifestVersion: 2`）、进程通信协议版本 2（`package.protocolVersion: 2`）、洋葱中间件版本 3（`middleware.version: 3`，声明挂载 `request` 与 `attempt` 阶段）以及统一事件观察能力（`observer`，替代原 `request_lifecycle` 与 `web_socket_observer`）。
+宿主最低版本为 codex-proxy-rs v3.29.0，不设人为上限，要求以 `plugin.json` 的 `engines` 为准；
+构建使用的 SDK 提交以 `backend/Cargo.toml` 中 `gateway-plugin-sdk` 的 `rev` 为准（固定至 v3.29.2 提交 `2221f400da29731c8f62464dd097945b85cf82f1`）。
+契约规范遵循清单格式版本 2（`manifestVersion: 2`）、插件 RPC 协议版本 4（`package.protocolVersion: 4`）、洋葱中间件版本 5（`middleware.version: 5`，声明挂载 `request` 与 `attempt` 阶段），以及统一事件观察能力（`observer` v2）与管理能力（`management` v2）。
 宿主运行采用完整信任模型（`trustedProcess`），无权限清单隔离，插件与宿主拥有相同系统身份，可访问数据、凭据、配置与网络；清单与握手均移除 `permissions` 字段。
 私有状态保持 `settings` 与 `observations` 命名空间的 `schemaVersion: 1`，插件 ID 维持 `dean-cherry.state-observer`；插件不直接修改宿主数据库结构（私有状态通过宿主 `host.state.*` 持久化），已有私有状态记录（含历史 SSE 观测）持续兼容可读。
 独立工程不依赖 fork 业务代码，不主动请求模型、不刷新 State、不改写请求、不参与调度。

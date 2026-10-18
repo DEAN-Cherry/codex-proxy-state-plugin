@@ -6,8 +6,8 @@
 ## 兼容与安装
 
 - 插件身份：`dean-cherry.state-observer`，安装包目标为 Linux x86_64 GNU（glibc 2.28+）
-- v0.2.1 要求宿主 `>=3.18.0`，使用上游 v3.18.2 SDK（技术细节见 [CONTRACT.md](CONTRACT.md) 与 [backend/Cargo.toml](backend/Cargo.toml)）
-- 宿主 3.15.2～3.17.x 请指定标签 `v0.1.3`；宿主 `>=3.18.0` 使用 `v0.2.1` 或后续兼容版本
+- v0.3.0 要求宿主 `>=3.29.0`，使用上游 v3.29.2 SDK 与插件 RPC 协议 v4（技术细节见 [CONTRACT.md](CONTRACT.md) 与 [backend/Cargo.toml](backend/Cargo.toml)）
+- 宿主 3.18.0～3.28.x 请指定标签 `v0.2.1`；宿主 3.15.2～3.17.x 请指定标签 `v0.1.3`；宿主 `>=3.29.0` 使用 `v0.3.0` 或后续兼容版本
 - 被停用的不兼容实例保留配置与私有数据，请勿卸载；安装兼容版本后核对绑定并重新启用
 - 在宿主「插件管理 → 安装 → GitHub」填写 `DEAN-Cherry/codex-proxy-state-plugin`，标签留空即查询最新稳定版；旧宿主不要留空
 - 或从 [Releases](https://github.com/DEAN-Cherry/codex-proxy-state-plugin/releases) 下载 `.tar.gz` 后「上传包」安装，不要使用 GitHub 自动生成的 Source code 归档
@@ -41,7 +41,7 @@
 
 ## 信任模型与故障隔离
 
-上游 3.18.x 无权限清单隔离，采用完整信任模型（trustedProcess），与宿主拥有相同系统身份，可访问数据、凭据、配置与网络，请只从可信来源安装。
+上游 3.29.x 无权限清单隔离，采用完整信任模型（trustedProcess），与宿主拥有相同系统身份，可访问数据、凭据、配置与网络，请只从可信来源安装。
 账号展示资料由 `host.data.accounts.list`（`account_facts`）非凭据运行投影获取；账号身份字段仍仅为 ID、显示名称 `accountName` 和启用状态。邮箱可作为 `accountName` 的值返回并显示，不新增独立 `email` 字段，不读取或返回凭据。SDK 不提供账号备注，页面不复刻宿主的备注展示规则。
 
 配置与摘要存放在宿主 `host.state.*`（保持 schemaVersion 1，插件 ID 仍为 `dean-cherry.state-observer`），插件不直接修改宿主数据库结构，已有私有状态及历史记录（含历史 SSE 来源）持续可读。写入最多等待 100 毫秒，存储失败只计入诊断，不返回给业务请求。
@@ -49,7 +49,7 @@
 建议将实例 `request`、`attempt` 绑定的「插件失败时」设为「交给后续处理」（`delegate`）；
 宿主安装器默认的 `reject` 不由插件清单控制，本插件也不会修改宿主实例配置。
 本插件没有配置项或认证映射，宿主可能隐藏其设置入口；此时可按
-[官方实例 API](https://github.com/zyycn/codex-proxy-rs/blob/v3.18.2/docs/api.md#121-运行实例) 修改绑定。
+[官方实例 API](https://github.com/zyycn/codex-proxy-rs/blob/v3.29.2/docs/api.md#121-运行实例) 修改绑定。
 
 ## 开发
 

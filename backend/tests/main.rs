@@ -186,22 +186,24 @@ fn manifest_accepts_supported_hosts_without_an_upper_cap() {
     let manifest = codex_proxy_state_plugin::manifest().unwrap();
     manifest.validate().unwrap();
     let hosts = &manifest.engines.codex_proxy_rs;
-    for version in ["3.18.0", "3.18.1", "3.18.2", "3.19.0"] {
+    for version in ["3.29.0", "3.29.1", "3.29.2", "3.30.0"] {
         assert!(hosts.matches(&version.parse().unwrap()), "{version}");
     }
-    for version in ["3.17.9", "3.16.0", "3.15.2"] {
+    for version in ["3.28.0", "3.27.1", "3.18.2", "3.15.2"] {
         assert!(!hosts.matches(&version.parse().unwrap()), "{version}");
     }
 }
 
 #[test]
 fn source_manifest_requires_the_new_contract_and_rejects_old_shapes() {
-    assert_eq!(gateway_plugin_sdk::PROTOCOL_VERSION, 2);
+    assert_eq!(gateway_plugin_sdk::PROTOCOL_VERSION, 4);
     let source: serde_json::Value =
         serde_json::from_str(include_str!("../../plugin.json")).unwrap();
     assert_eq!(source["manifestVersion"], 2);
     assert_eq!(source["version"], env!("CARGO_PKG_VERSION"));
-    assert_eq!(source["contributes"]["middleware"]["version"], 3);
+    assert_eq!(source["contributes"]["middleware"]["version"], 5);
+    assert_eq!(source["contributes"]["observer"]["version"], 2);
+    assert_eq!(source["contributes"]["management"]["version"], 2);
     assert_eq!(
         source["contributes"]["middleware"]["stages"],
         json!(["request", "attempt"])

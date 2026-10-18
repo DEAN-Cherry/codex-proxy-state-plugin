@@ -43,7 +43,7 @@ export class PluginPeer {
     const contributes = Object.fromEntries(Object.entries(this.#manifest.contributes).map(([name, declaration]) => [
       name, {
         id: `${this.#manifest.publisher}.${this.#manifest.name}.${name.replaceAll('_', '-')}`,
-        version: name === 'middleware' ? 3 : 1,
+        version: declaration.version ?? 1,
         stages: name === 'middleware' ? declaration.stages : [name === 'management' ? 'management' : 'observation'],
         ...declaration,
       },
@@ -51,7 +51,7 @@ export class PluginPeer {
     this.#send({
       type: 'hello',
       handshake: {
-        protocol_version: 2, artifact_sha256: 'a'.repeat(64),
+        protocol_version: 4, artifact_sha256: 'a'.repeat(64),
         plugin_id: `${this.#manifest.publisher}.${this.#manifest.name}`,
         instance_id: 'qa-state-observer', generation: 1, incarnation: 'qa-process',
         configuration: {}, contributes,
@@ -61,10 +61,12 @@ export class PluginPeer {
     const registration = await this.call('plugin.register', 'registration', {}, Buffer.alloc(0))
     if (registration.message.type !== 'result') throw new Error('registration failed')
     const registered = registration.message.result.contributes
-    if (registered.middleware?.version !== 3 ||
+    if (registered.middleware?.version !== 5 ||
+        registered.observer?.version !== 2 ||
+        registered.management?.version !== 2 ||
         registered.observer?.stages?.[0] !== 'observation' ||
         Object.keys(registered).sort().join(',') !== 'management,middleware,observer')
-      throw new Error('registration lacks protocol-2 middleware and observer capabilities')
+      throw new Error('registration lacks protocol-4 middleware, observer and management capabilities')
     return this
   }
 
@@ -145,11 +147,33 @@ export class PluginPeer {
   }
 
   #send(message, payload = Buffer.alloc(0)) {
-    const metadata = Buffer.from(JSON.stringify(message))
+    // 协议 v4：业务 JSON（配置、调用参数、结果）放在载荷前缀，控制元数据只保留长度。
+    const metadataMessage = structuredClone(message)
+    let data
+    if (metadataMessage.type === 'hello') {
+      data = metadataMessage.handshake.configuration
+      delete metadataMessage.handshake.configuration
+    } else if (metadataMessage.type === 'call' || metadataMessage.type === 'callback') {
+      data = metadataMessage.params
+      delete metadataMessage.params
+    } else if (metadataMessage.type === 'result') {
+      data = metadataMessage.result
+      delete metadataMessage.result
+    }
+    let request = Buffer.alloc(0)
+    if (metadataMessage.type === 'call' && metadataMessage.context?.request !== undefined) {
+      request = Buffer.from(JSON.stringify(metadataMessage.context.request))
+      delete metadataMessage.context.request
+    }
+    const dataBytes = data === undefined ? Buffer.alloc(0) : Buffer.from(JSON.stringify(data))
+    if (request.length) metadataMessage.request_context_bytes = request.length
+    if (dataBytes.length) metadataMessage.data_bytes = dataBytes.length
+    const metadata = Buffer.from(JSON.stringify(metadataMessage))
+    const body = Buffer.concat([request, dataBytes, payload])
     const header = Buffer.alloc(12)
     header.writeUInt32BE(metadata.length)
-    header.writeBigUInt64BE(BigInt(payload.length), 4)
-    this.#process.stdin.write(Buffer.concat([header, metadata, payload]))
+    header.writeBigUInt64BE(BigInt(body.length), 4)
+    this.#process.stdin.write(Buffer.concat([header, metadata, body]))
     this.#process.stdin.flush()
   }
 
@@ -163,7 +187,25 @@ export class PluginPeer {
         const size = 12 + metadataBytes + payloadBytes
         if (this.#buffer.length < size) break
         const message = JSON.parse(this.#buffer.subarray(12, 12 + metadataBytes).toString())
-        const payload = Buffer.from(this.#buffer.subarray(12 + metadataBytes, size))
+        const requestBytes = message.request_context_bytes ?? 0
+        const dataBytes = message.data_bytes ?? 0
+        delete message.request_context_bytes
+        delete message.data_bytes
+        let offset = 12 + metadataBytes
+        if (requestBytes) {
+          if (message.type !== 'call') throw new Error('request context without a call')
+          message.context.request = JSON.parse(this.#buffer.subarray(offset, offset + requestBytes).toString())
+          offset += requestBytes
+        }
+        if (dataBytes) {
+          const data = JSON.parse(this.#buffer.subarray(offset, offset + dataBytes).toString())
+          offset += dataBytes
+          if (message.type === 'hello') message.handshake.configuration = data
+          else if (message.type === 'call' || message.type === 'callback') message.params = data
+          else if (message.type === 'result') message.result = data
+          else throw new Error('business data on a control-only message')
+        }
+        const payload = Buffer.from(this.#buffer.subarray(offset, size))
         this.#buffer = this.#buffer.subarray(size)
         this.#dispatch({ message, payload }).catch(error => this.#fail(error))
       }

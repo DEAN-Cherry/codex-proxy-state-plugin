@@ -3,6 +3,12 @@
 version = 4
 
 [[package]]
+name = "base64"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
+
+[[package]]
 name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -25,7 +31,7 @@ checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
 name = "codex-proxy-state-plugin"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "gateway-plugin-sdk",
  "serde",
@@ -87,8 +93,9 @@ dependencies = [
 [[package]]
 name = "gateway-plugin-sdk"
 version = "0.1.0"
-source = "git+https://github.com/zyycn/codex-proxy-rs.git?rev=e30aad475560b94db2d999e2251d180e45d52671#e30aad475560b94db2d999e2251d180e45d52671"
+source = "git+https://github.com/zyycn/codex-proxy-rs.git?rev=2221f400da29731c8f62464dd097945b85cf82f1#2221f400da29731c8f62464dd097945b85cf82f1"
 dependencies = [
+ "base64",
  "semver",
  "serde",
  "serde_json",

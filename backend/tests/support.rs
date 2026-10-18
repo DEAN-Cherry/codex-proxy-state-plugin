@@ -80,6 +80,7 @@ impl Peer {
                 id,
                 method: method.into(),
                 context: CallContext {
+                    request: None,
                     call_id: id,
                     instance_id: "test".into(),
                     generation: 1,
