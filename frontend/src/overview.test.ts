@@ -45,6 +45,28 @@ test('name and model filters preserve distinct account groups with matching chil
   assert.deepEqual(filterAccountGroups(groups, { account: 'acct-b', model: '', status: '' }).map(account => account.accountId), ['acct-b'])
 })
 
+test('expired models past the display grace move to history and stay reachable via the expired filter', () => {
+  const hour = 3_600_000
+  const base = { ...validModel, source: 'http_header' as const, validation: 'mismatch' as const }
+  const live = { ...base, model: 'live', expired: false, expiresAtMs: now + hour }
+  const recent = { ...base, model: 'recent', expired: true, expiresAtMs: now - hour / 2 }
+  const stale = { ...base, model: 'stale', expired: true, expiresAtMs: now - 2 * hour }
+  const groups: OverviewAccount[] = [
+    { accountId: 'acct-a', accountName: '', enabled: true, observationEnabled: true, error: null, models: [live, recent, stale] },
+    { accountId: 'acct-b', accountName: '', enabled: true, observationEnabled: true, error: null, models: [stale] },
+  ]
+  const none = { account: '', model: '', status: '' as const }
+  const strict = filterAccountGroups(groups, none, { nowMs: now, graceMs: 0 })
+  assert.deepEqual(strict.map(group => [group.accountId, group.models.map(model => model.model), group.archived]), [['acct-a', ['live'], 2], ['acct-b', [], 1]])
+  const grace = filterAccountGroups(groups, none, { nowMs: now, graceMs: hour })
+  assert.deepEqual(grace.map(group => [group.models.map(model => model.model), group.archived]), [[['live', 'recent'], 1], [[], 1]])
+  // 带筛选条件时，只剩历史 State 的账号不再占位
+  assert.deepEqual(filterAccountGroups(groups, { ...none, model: 'live' }, { nowMs: now, graceMs: 0 }).map(group => group.accountId), ['acct-a'])
+  const expired = filterAccountGroups(groups, { ...none, status: 'expired' }, { nowMs: now, graceMs: 0 })
+  assert.deepEqual(expired.map(group => group.models.map(model => model.model)), [['recent', 'stale'], ['stale']])
+  assert.deepEqual(filterAccountGroups(groups, none).map(group => group.models.length), [3, 1])
+})
+
 test('pagination never splits models of the same account and unnamed accounts retain identity', () => {
   const groups: OverviewAccount[] = ['acct-a', 'acct-b'].map(accountId => ({
     accountId, accountName: '', enabled: true, observationEnabled: true, error: null,

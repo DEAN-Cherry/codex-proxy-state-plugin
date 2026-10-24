@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { BaseButton, BaseTag } from '@codex-proxy/ui'
-import type { OverviewAccount } from './api'
 import { accountLabel, modelStatuses, statusNames } from './overviewGroups'
+import type { AccountGroupView } from './overviewGroups'
 
-defineProps<{ account: OverviewAccount }>()
+defineProps<{ account: AccountGroupView }>()
 const emit = defineEmits<{ open: [accountId: string] }>()
 const time = (ms: number) => new Date(ms).toLocaleString('zh-CN', { hour12: false })
 </script>
@@ -13,9 +13,10 @@ const time = (ms: number) => new Date(ms).toLocaleString('zh-CN', { hour12: fals
     <summary class="cursor-pointer rounded-cp text-cp-sm focus-visible:outline-2 focus-visible:outline-cp-control-outline">
       <span class="ml-1 inline-flex max-w-full flex-wrap items-center gap-2 align-middle">
         <span class="min-w-0 break-all font-bold text-cp-text">{{ accountLabel(account) }}</span>
-        <BaseTag size="sm">{{ account.models.length }} 个模型</BaseTag>
+        <BaseTag v-if="account.models.length || !account.archived" size="sm">{{ account.models.length }} 个模型</BaseTag>
         <BaseTag v-if="account.error" size="sm" type="danger">读取失败</BaseTag>
-        <BaseTag v-else-if="!account.models.length" size="sm">未观测</BaseTag>
+        <BaseTag v-else-if="!account.models.length && !account.archived" size="sm">未观测</BaseTag>
+        <BaseTag v-if="account.archived" size="sm">历史 State {{ account.archived }}</BaseTag>
         <BaseTag v-if="!account.enabled" size="sm">账号停用</BaseTag>
         <BaseTag v-if="account.observationEnabled === false" size="sm">观测停用</BaseTag>
       </span>
@@ -26,6 +27,7 @@ const time = (ms: number) => new Date(ms).toLocaleString('zh-CN', { hour12: fals
         <BaseButton size="sm" @click="emit('open', account.accountId)">详情与配置</BaseButton>
       </div>
       <p v-if="account.error" class="m-0 text-cp-sm text-cp-error-text">观测数据读取失败，可重新加载或打开详情重试</p>
+      <p v-else-if="!account.models.length && account.archived" class="m-0 text-cp-sm text-cp-text-secondary">当前没有有效 State，{{ account.archived }} 个模型的历史 State 可在详情中查看</p>
       <p v-else-if="!account.models.length" class="m-0 text-cp-sm text-cp-text-secondary">该账号尚未观测到 State</p>
       <div v-else class="min-w-0 overflow-x-auto rounded-cp focus-visible:outline-2 focus-visible:outline-cp-control-outline" tabindex="0" role="region" :aria-label="`${accountLabel(account)}的模型观测，可横向滚动`">
         <table class="w-full border-collapse whitespace-nowrap text-left text-cp-sm">

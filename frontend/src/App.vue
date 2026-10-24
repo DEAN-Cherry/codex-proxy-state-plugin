@@ -13,7 +13,15 @@ const modelFilter = ref('')
 const statusFilter = ref<RowStatus | ''>('')
 const currentPage = ref(1)
 const pageSize = ref(10)
-const filteredGroups = computed(() => filterAccountGroups(state.accounts.value, { account: accountFilter.value, model: modelFilter.value, status: statusFilter.value }))
+const GRACE_KEY = 'state-observer:expired-grace-hours'
+const graceOptions = [{ hours: 0, label: '仅显示有效' }, { hours: 1, label: '过期后 1 小时' }, { hours: 6, label: '过期后 6 小时' }, { hours: 24, label: '过期后 24 小时' }, { hours: 168, label: '过期后 7 天' }]
+const graceHours = ref(readGrace())
+const filteredGroups = computed(() => filterAccountGroups(
+  state.accounts.value,
+  { account: accountFilter.value, model: modelFilter.value, status: statusFilter.value },
+  { nowMs: state.nowMs.value, graceMs: graceHours.value * 3_600_000 },
+))
+const archivedTotal = computed(() => filteredGroups.value.reduce((sum, account) => sum + account.archived, 0))
 const totalPages = computed(() => Math.max(1, Math.ceil(filteredGroups.value.length / pageSize.value)))
 const pagedGroups = computed(() => pageGroups(filteredGroups.value, currentPage.value, pageSize.value))
 const pagination = computed(() => ({ currentPage: currentPage.value, pageSize: pageSize.value, total: filteredGroups.value.length, pageSizes: [10, 20, 50] }))
@@ -22,7 +30,20 @@ const activeName = computed(() => {
   return account ? accountLabel(account) : state.activeAccountId.value || '账号详情'
 })
 const scopeLabel = computed(() => state.complete.value ? `全部账号 ${state.accounts.value.length} 个` : `已加载 ${state.accounts.value.length} 个账号${state.nextCursor.value ? '，尚未完成' : ''}`)
-watch([accountFilter, modelFilter, statusFilter], () => { currentPage.value = 1 })
+watch([accountFilter, modelFilter, statusFilter, graceHours], () => { currentPage.value = 1 })
+watch(graceHours, hours => {
+  // 展示期限只是本机浏览偏好，存储不可用时静默回退为会话内生效。
+  try { window.localStorage.setItem(GRACE_KEY, String(hours)) }
+  catch { /* 宿主沙箱可能禁用 localStorage */ }
+})
+
+function readGrace(): number {
+  try {
+    const saved = Number(window.localStorage.getItem(GRACE_KEY))
+    return graceOptions.some(option => option.hours === saved) ? saved : 0
+  }
+  catch { return 0 }
+}
 watch(totalPages, () => { currentPage.value = clampPage(currentPage.value, filteredGroups.value.length, pageSize.value) })
 watch(() => state.saving.value, async (saving, wasSaving) => {
   if (wasSaving && !saving && state.modalOpen.value) {
@@ -75,7 +96,7 @@ function retryOverview() {
 
     <BaseCard title="账号与模型概况" padding="compact">
       <template #actions><BaseTag>{{ filteredGroups.length }} 个账号</BaseTag></template>
-      <div class="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_12rem]">
+      <div class="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_10rem_10rem]">
         <div class="flex min-w-0 flex-col gap-2">
           <label for="account-filter" class="text-cp-sm font-bold">账号</label>
           <BaseInput id="account-filter" v-model="accountFilter" type="search" placeholder="搜索名称或 ID" />
@@ -92,7 +113,17 @@ function retryOverview() {
             <option v-for="(name, status) in statusNames" :key="status" :value="status">{{ name }}</option>
           </select>
         </div>
+        <div class="flex min-w-0 flex-col gap-2">
+          <label for="grace-filter" class="text-cp-sm font-bold">过期展示期限</label>
+          <select id="grace-filter" v-model.number="graceHours" aria-describedby="grace-help"
+            class="h-cp-control w-full min-w-0 rounded-cp border-0 bg-[var(--cp-input-bg)] px-3 text-cp text-cp-text shadow-cp-input focus-visible:outline-2 focus-visible:outline-cp-control-outline">
+            <option v-for="option in graceOptions" :key="option.hours" :value="option.hours">{{ option.label }}</option>
+          </select>
+        </div>
       </div>
+      <p id="grace-help" class="mt-2 mb-0 text-cp-xs text-cp-text-secondary">
+        过期超过展示期限的模型移入账号详情的「历史 State」<template v-if="archivedTotal">，当前已收起 {{ archivedTotal }} 个</template>；筛选「已过期」时全部显示
+      </p>
       <p v-if="!state.complete.value" class="mt-2 mb-0 text-cp-xs text-cp-text-secondary">筛选暂时只覆盖已加载账号</p>
 
       <p v-if="state.loading.value && !state.accounts.value.length" role="status" class="my-6 text-cp-sm text-cp-text-secondary">正在加载账号与模型记录</p>

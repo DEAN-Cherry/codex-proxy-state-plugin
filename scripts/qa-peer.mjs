@@ -51,7 +51,7 @@ export class PluginPeer {
     this.#send({
       type: 'hello',
       handshake: {
-        protocol_version: 4, artifact_sha256: 'a'.repeat(64),
+        protocol_version: 5, artifact_sha256: 'a'.repeat(64),
         plugin_id: `${this.#manifest.publisher}.${this.#manifest.name}`,
         instance_id: 'qa-state-observer', generation: 1, incarnation: 'qa-process',
         configuration: {}, contributes,
@@ -66,7 +66,7 @@ export class PluginPeer {
         registered.management?.version !== 2 ||
         registered.observer?.stages?.[0] !== 'observation' ||
         Object.keys(registered).sort().join(',') !== 'management,middleware,observer')
-      throw new Error('registration lacks protocol-4 middleware, observer and management capabilities')
+      throw new Error('registration lacks protocol-5 middleware, observer and management capabilities')
     return this
   }
 

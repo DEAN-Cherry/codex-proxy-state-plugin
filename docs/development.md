@@ -79,5 +79,5 @@ cargo install --locked --git https://github.com/zyycn/codex-proxy-rs.git \
 ```
 
 生成的 `.tar.gz` 与 `.sha256` 通过摘要绑定二进制和静态资源。
-在 Linux 上可用 `python3 scripts/verify-package.py --tag v0.3.0 --directory dist --binary <本次构建的二进制路径>` 复现包校验（需 Python 3.11+、`readelf`）。
+在 Linux 上可用 `python3 scripts/verify-package.py --tag v0.4.0 --directory dist --binary <本次构建的二进制路径>` 复现包校验（需 Python 3.11+、`readelf`）。
 进程冒烟命令为 `QA_PLUGIN_BINARY=<本次构建的二进制路径> bun scripts/qa-smoke.mjs`。

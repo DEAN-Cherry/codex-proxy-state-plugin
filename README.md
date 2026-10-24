@@ -6,8 +6,8 @@
 ## 兼容与安装
 
 - 插件身份：`dean-cherry.state-observer`，安装包目标为 Linux x86_64 GNU（glibc 2.28+）
-- v0.3.0 要求宿主 `>=3.29.0`，使用上游 v3.29.2 SDK 与插件 RPC 协议 v4（技术细节见 [CONTRACT.md](CONTRACT.md) 与 [backend/Cargo.toml](backend/Cargo.toml)）
-- 宿主 3.18.0～3.28.x 请指定标签 `v0.2.1`；宿主 3.15.2～3.17.x 请指定标签 `v0.1.3`；宿主 `>=3.29.0` 使用 `v0.3.0` 或后续兼容版本
+- v0.4.0 要求宿主 `>=3.29.7`，使用上游 v3.30.2 SDK 与插件 RPC 协议 v5（技术细节见 [CONTRACT.md](CONTRACT.md) 与 [backend/Cargo.toml](backend/Cargo.toml)）
+- 宿主 3.29.0～3.29.6 请指定标签 `v0.3.0`；宿主 3.18.0～3.28.x 请指定标签 `v0.2.1`；宿主 3.15.2～3.17.x 请指定标签 `v0.1.3`；宿主 `>=3.29.7` 使用 `v0.4.0` 或后续兼容版本
 - 被停用的不兼容实例保留配置与私有数据，请勿卸载；安装兼容版本后核对绑定并重新启用
 - 在宿主「插件管理 → 安装 → GitHub」填写 `DEAN-Cherry/codex-proxy-state-plugin`，标签留空即查询最新稳定版；旧宿主不要留空
 - 或从 [Releases](https://github.com/DEAN-Cherry/codex-proxy-state-plugin/releases) 下载 `.tar.gz` 后「上传包」安装，不要使用 GitHub 自动生成的 Source code 归档
@@ -49,7 +49,7 @@
 建议将实例 `request`、`attempt` 绑定的「插件失败时」设为「交给后续处理」（`delegate`）；
 宿主安装器默认的 `reject` 不由插件清单控制，本插件也不会修改宿主实例配置。
 本插件没有配置项或认证映射，宿主可能隐藏其设置入口；此时可按
-[官方实例 API](https://github.com/zyycn/codex-proxy-rs/blob/v3.29.2/docs/api.md#121-运行实例) 修改绑定。
+[官方实例 API](https://github.com/zyycn/codex-proxy-rs/blob/v3.30.2/docs/api.md#121-运行实例) 修改绑定。
 
 ## 开发
 
