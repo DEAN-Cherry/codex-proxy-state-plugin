@@ -66,6 +66,25 @@ impl Peer {
             .unwrap()
     }
 
+    /// 等到插件主动发起的宿主回调；期间应答挂起与恢复，忽略已消费的回收通知
+    #[allow(dead_code)] // 仅 protocol 测试需要，其他测试目标共享本文件
+    pub async fn recv_callback(&mut self) -> (u64, String, Value, Vec<u8>) {
+        loop {
+            let frame = self.recv().await;
+            match frame.message {
+                Message::Callback {
+                    id, method, params, ..
+                } => return (id, method, params, frame.payload),
+                Message::Resume { id, epoch } => {
+                    self.send(Frame::control(Message::Resumed { id, epoch }))
+                        .await;
+                }
+                Message::Suspend { .. } | Message::CallbackConsumed { .. } => {}
+                other => panic!("unexpected frame {other:?}"),
+            }
+        }
+    }
+
     pub async fn begin(
         &mut self,
         method: &str,
@@ -75,6 +94,12 @@ impl Peer {
     ) -> u64 {
         self.id += 2;
         let id = self.id - 1;
+        // 协议 v7 起宿主声明的 timeout_ms 不能超过该阶段的默认处理预算
+        let timeout_ms = match stage {
+            Stage::Registration => 5_000,
+            Stage::Observation | Stage::Routing | Stage::Scheduling | Stage::Retry => 1_500,
+            _ => 10_000,
+        };
         self.send(Frame {
             message: Message::Call {
                 id,
@@ -86,7 +111,7 @@ impl Peer {
                     generation: 1,
                     incarnation: "inc".into(),
                     stage,
-                    timeout_ms: 10_000,
+                    timeout_ms,
                     resource_stream: false,
                     resource_scope_id: "scope".into(),
                     request_id: Some("request".into()),
@@ -141,6 +166,21 @@ impl Peer {
                     assert_eq!(*parent_id, id);
                     let reply = callback(method, params, &frame.payload);
                     self.callback(*callback_id, reply).await;
+                }
+                // 父任务暂时让出执行名额，宿主无需应答
+                Message::Suspend { .. } | Message::CallbackConsumed { .. } => {}
+                // 插件请求恢复，宿主授权后才能继续同一调用；
+                // 授权必须回传插件给出的调用编号与 epoch，不能借当前等待的调用编号
+                Message::Resume {
+                    id: resume_id,
+                    epoch,
+                } => {
+                    let (resume_id, epoch) = (*resume_id, *epoch);
+                    self.send(Frame::control(Message::Resumed {
+                        id: resume_id,
+                        epoch,
+                    }))
+                    .await;
                 }
                 Message::Result {
                     id: response_id, ..

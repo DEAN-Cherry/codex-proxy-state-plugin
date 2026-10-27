@@ -59,7 +59,7 @@ def verify(tag, directory, binary):
         require(manifest["version"] == version, "Packaged version mismatch")
         require(manifest["runtime"] == "trustedProcess", "Unexpected runtime")
         require(manifest["main"] == "bin/plugin", "Unexpected entry point")
-        require(manifest["engines"] == {"codex-proxy-rs": ">=3.29.7"}, "Unexpected host compatibility")
+        require(manifest["engines"] == {"codex-proxy-rs": ">=3.33.0"}, "Unexpected host compatibility")
         require("permissions" not in manifest, "Legacy permissions are forbidden")
         require(manifest.get("secretFields", []) == [], "Unexpected secret fields")
         require(len(manifest["state"]) == 2 and {
@@ -71,7 +71,7 @@ def verify(tag, directory, binary):
         contributes = manifest["contributes"]
         require(set(contributes) == {"middleware", "observer", "management"}, "Unexpected capabilities")
         for capability, capability_version, stages in [
-            ("middleware", 5, ["request", "attempt"]),
+            ("middleware", 6, ["request", "attempt"]),
             ("observer", 2, ["observation"]),
             ("management", 2, ["management"]),
         ]:
@@ -81,7 +81,7 @@ def verify(tag, directory, binary):
             for field, value in source["contributes"][capability].items():
                 require(declaration[field] == value, f"Capability field changed: {capability}.{field}")
         package = manifest["package"]
-        require(package["protocolVersion"] == 5, "Protocol version must be 5")
+        require(package["protocolVersion"] == 7, "Protocol version must be 7")
         require(package["target"] == {"os": "linux", "architecture": "x86_64"}, "Package target mismatch")
         require(set(package["files"]) == expected_files, "Unexpected package hash entries")
         for name in sorted(expected_files):

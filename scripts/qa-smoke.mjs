@@ -122,7 +122,7 @@ try {
   const exposed = JSON.stringify({ directory: directory.value, overview: overviewPages, snapshot: snapshot.value, states: [...peer.states] })
   assert.ok(!exposed.includes('Q'.repeat(292)), 'Raw State must not reach storage or management responses')
   assert.ok(!/"(?:email|provider_id|group_ids|credentialRevision)":/.test(exposed))
-  console.log('RELEASE_SMOKE_PASS protocol=5 accounts=56 labels=ok overview=3pages privacy=ok http=ok websocket=ok settings=ok cas=409 invalid=400')
+  console.log('RELEASE_SMOKE_PASS protocol=7 accounts=56 labels=ok overview=3pages privacy=ok http=ok websocket=ok settings=ok cas=409 invalid=400')
 } finally {
   clearTimeout(deadline)
   peer.close()

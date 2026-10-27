@@ -6,8 +6,8 @@
 ## 兼容与安装
 
 - 插件身份：`dean-cherry.state-observer`，安装包目标为 Linux x86_64 GNU（glibc 2.28+）
-- v0.4.0 要求宿主 `>=3.29.7`，使用上游 v3.30.2 SDK 与插件 RPC 协议 v5（技术细节见 [CONTRACT.md](CONTRACT.md) 与 [backend/Cargo.toml](backend/Cargo.toml)）
-- 宿主 3.29.0～3.29.6 请指定标签 `v0.3.0`；宿主 3.18.0～3.28.x 请指定标签 `v0.2.1`；宿主 3.15.2～3.17.x 请指定标签 `v0.1.3`；宿主 `>=3.29.7` 使用 `v0.4.0` 或后续兼容版本
+- v0.4.1 要求宿主 `>=3.33.0`，使用上游 v3.33.0 SDK 与插件 RPC 协议 v7（技术细节见 [CONTRACT.md](CONTRACT.md) 与 [backend/Cargo.toml](backend/Cargo.toml)）
+- 宿主 3.29.7～3.31.3 请指定标签 `v0.4.0`；宿主 3.29.0～3.29.6 请指定标签 `v0.3.0`；宿主 3.18.0～3.28.x 请指定标签 `v0.2.1`；宿主 3.15.2～3.17.x 请指定标签 `v0.1.3`；宿主 `>=3.33.0` 使用 `v0.4.1` 或后续兼容版本
 - 被停用的不兼容实例保留配置与私有数据，请勿卸载；安装兼容版本后核对绑定并重新启用
 - 在宿主「插件管理 → 安装 → GitHub」填写 `DEAN-Cherry/codex-proxy-state-plugin`，标签留空即查询最新稳定版；旧宿主不要留空
 - 或从 [Releases](https://github.com/DEAN-Cherry/codex-proxy-state-plugin/releases) 下载 `.tar.gz` 后「上传包」安装，不要使用 GitHub 自动生成的 Source code 归档

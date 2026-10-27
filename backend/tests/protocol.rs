@@ -63,13 +63,19 @@ fn response() -> Reply {
 }
 
 async fn terminal(peer: &mut Peer, store: &mut Store) {
-    peer.call("observer.observe", Stage::Observation, json!({"event":"request_completed","data":{
+    peer.call(
+        "observer.observe",
+        Stage::Observation,
+        json!({"event":"request_completed","data":{
             "event_id":"terminal","request_id":"request","config_revision":1,"operation":"generate",
-            "account_id":"acct-a","upstream_model":"actual-model","response_model":"reported-other-model",
+            "account_id":"acct-a","upstream_model":"actual-model",
             "requested_model":"public-alias","provider":"openai","completed_at_ms":1,
             "terminal":{"outcome":"succeeded","send_state":"sent","attempt_count":1},"usage":{}
-        }}), Vec::new(),
-        |method, params, payload| store.call(method, params, payload)).await;
+        }}),
+        Vec::new(),
+        |method, params, payload| store.call(method, params, payload),
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -132,15 +138,7 @@ async fn terminal_first_joins_from_the_live_middleware_callback() {
     let id = peer
         .begin("middleware.handle", Stage::Request, head(), b"{}".to_vec())
         .await;
-    let callback = peer.recv().await;
-    let Message::Callback {
-        id: next_id,
-        method,
-        ..
-    } = callback.message
-    else {
-        panic!("missing next")
-    };
+    let (next_id, method, _, _) = peer.recv_callback().await;
     assert_eq!(method, "host.middleware.next");
     terminal(&mut peer, &mut store).await;
     // When
@@ -173,9 +171,7 @@ async fn storage_failure_does_not_replace_the_business_response() {
     let id = peer
         .begin("middleware.handle", Stage::Request, head(), b"{}".to_vec())
         .await;
-    let Message::Callback { id: next_id, .. } = peer.recv().await.message else {
-        panic!("missing next")
-    };
+    let (next_id, _, _, _) = peer.recv_callback().await;
     terminal(&mut peer, &mut store).await;
     // When
     peer.callback(next_id, response()).await;

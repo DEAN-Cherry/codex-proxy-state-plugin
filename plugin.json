@@ -3,15 +3,15 @@
   "name": "state-observer",
   "displayName": "State 观测",
   "publisher": "dean-cherry",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "按账号和模型记录业务 State 长度、指纹和观测历史",
   "license": "Apache-2.0",
-  "engines": {"codex-proxy-rs": ">=3.29.7"},
+  "engines": {"codex-proxy-rs": ">=3.33.0"},
   "main": "bin/plugin",
   "runtime": "trustedProcess",
   "contributes": {
     "middleware": {
-      "version": 5,
+      "version": 6,
       "stages": ["request", "attempt"],
       "inputFormats": ["openai"],
       "outputFormats": ["openai"]

@@ -51,7 +51,7 @@ export class PluginPeer {
     this.#send({
       type: 'hello',
       handshake: {
-        protocol_version: 5, artifact_sha256: 'a'.repeat(64),
+        protocol_version: 7, artifact_sha256: 'a'.repeat(64),
         plugin_id: `${this.#manifest.publisher}.${this.#manifest.name}`,
         instance_id: 'qa-state-observer', generation: 1, incarnation: 'qa-process',
         configuration: {}, contributes,
@@ -61,18 +61,22 @@ export class PluginPeer {
     const registration = await this.call('plugin.register', 'registration', {}, Buffer.alloc(0))
     if (registration.message.type !== 'result') throw new Error('registration failed')
     const registered = registration.message.result.contributes
-    if (registered.middleware?.version !== 5 ||
+    if (registered.middleware?.version !== 6 ||
         registered.observer?.version !== 2 ||
         registered.management?.version !== 2 ||
         registered.observer?.stages?.[0] !== 'observation' ||
         Object.keys(registered).sort().join(',') !== 'management,middleware,observer')
-      throw new Error('registration lacks protocol-5 middleware, observer and management capabilities')
+      throw new Error('registration lacks protocol-7 middleware, observer and management capabilities')
     return this
   }
 
   call(method, stage, params, payload = Buffer.alloc(0), callback, requestId = 'qa-management') {
     const id = this.#nextId
     this.#nextId += 2
+    // 协议 v7 起宿主声明的 timeout_ms 不能超过该阶段的默认处理预算
+    const budget = stage === 'registration' ? 5_000
+      : ['observation', 'routing', 'scheduling', 'retry'].includes(stage) ? 1_500
+        : 10_000
     const result = Promise.withResolvers()
     const timeout = setTimeout(() => {
       this.#pending.delete(id)
@@ -84,7 +88,7 @@ export class PluginPeer {
       type: 'call', id, method,
       context: {
         call_id: id, instance_id: 'qa-state-observer', generation: 1, incarnation: 'qa-process',
-        stage, timeout_ms: 10_000, resource_stream: false, resource_scope_id: 'qa-scope', request_id: requestId,
+        stage, timeout_ms: budget, resource_stream: false, resource_scope_id: 'qa-scope', request_id: requestId,
         account_id: params.account_id,
       },
       params,
@@ -215,6 +219,12 @@ export class PluginPeer {
   async #dispatch(frame) {
     const message = frame.message
     if (message.type === 'ready') { this.#ready.resolve(); return }
+    // 协议 v7：父处理任务让出执行名额，宿主授权后插件才继续同一调用
+    if (message.type === 'resume') {
+      this.#send({ type: 'resumed', id: message.id, epoch: message.epoch })
+      return
+    }
+    if (message.type === 'suspend' || message.type === 'callback_consumed') return
     if (message.type === 'callback') {
       const parent = this.#pending.get(message.parent_id)
       if (!parent) throw new Error('callback without live parent')

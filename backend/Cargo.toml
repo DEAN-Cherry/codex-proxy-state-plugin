@@ -1,13 +1,13 @@
 [package]
 name = "codex-proxy-state-plugin"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2024"
 rust-version = "1.99.1"
 license = "Apache-2.0"
 publish = false
 
 [dependencies]
-gateway-plugin-sdk = { git = "https://github.com/zyycn/codex-proxy-rs.git", rev = "76291f448cdf1d1da2027da32b7c949deb998c7a", features = ["io"] }
+gateway-plugin-sdk = { git = "https://github.com/zyycn/codex-proxy-rs.git", rev = "8c8618aa0f841638262262e3338c115bc075f125", features = ["io"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 sha2 = "0.10.9"
